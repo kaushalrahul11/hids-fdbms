@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap");
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-canvas text-ink font-sans antialiased;
+}
+
+::selection {
+  @apply bg-teal-100 text-navy-900;
+}
+
+/* Consistent focus ring across the app */
+:focus-visible {
+  outline: 2px solid #0EA5A0;
+  outline-offset: 2px;
+}
