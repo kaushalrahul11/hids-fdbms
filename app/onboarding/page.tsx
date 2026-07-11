@@ -204,8 +204,7 @@ export default function OnboardingPage() {
       }
     }
 
-    const { error: completeError } = await supabase
-      .from("profiles").update({ profile_completed: true }).eq("id", userId);
+    const { error: completeError } = await supabase.rpc("complete_own_onboarding");
 
     setSubmitting(false);
     if (completeError) {
