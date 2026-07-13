@@ -1,6 +1,6 @@
 import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  WidthType, AlignmentType, HeadingLevel, BorderStyle, PageBreak,
+  WidthType, AlignmentType, HeadingLevel, BorderStyle, PageBreak, ImageRun,
 } from "docx";
 
 function cell(text: string, opts: { bold?: boolean; width?: number } = {}) {
@@ -52,8 +52,10 @@ export async function generateAffidavitDocx(data: {
   qualifications: any[];
   history: any[];
   publications: any[];
+  photoBuffer?: Buffer | null;
+  photoType?: "jpg" | "png" | "gif" | "bmp";
 }) {
-  const { profile, qualifications, history, publications } = data;
+  const { profile, qualifications, history, publications, photoBuffer, photoType = "jpg" } = data;
 
   // Build the experience table rows, grouping employment history + current
   // HIDS appointment by position category
@@ -118,12 +120,13 @@ export async function generateAffidavitDocx(data: {
           cell(String(i + 1)),
           cell(pub.title ?? ""),
           cell(pub.journal_name ?? ""),
+          cell(pub.category ?? ""),
           cell(String(pub.verified_points ?? "")),
         ],
       })
     );
   if (pubRows.length === 0) {
-    pubRows.push(new TableRow({ children: ["1.", "", "", ""].map((t) => cell(t)) }));
+    pubRows.push(new TableRow({ children: ["1.", "", "", "", ""].map((t) => cell(t)) }));
   }
 
   const tableBorders = {
@@ -147,6 +150,21 @@ export async function generateAffidavitDocx(data: {
             children: [new TextRun({ text: "AFFIDAVIT", bold: true })],
           }),
           p("(On Non-Judicial Stamp Paper)", { alignment: AlignmentType.CENTER, size: 20, spacing: 240 }),
+
+          ...(photoBuffer
+            ? [
+                new Paragraph({
+                  alignment: AlignmentType.RIGHT,
+                  children: [
+                    new ImageRun({
+                      data: photoBuffer,
+                      transformation: { width: 110, height: 140 },
+                      type: photoType,
+                    }),
+                  ],
+                }),
+              ]
+            : []),
 
           p(`1.  I, Dr. ${profile.full_name ?? "_______________________________"}`),
           p(`     S/o, D/o, W/o ${profile.father_name || profile.husband_name || "_______________________________"}`),
@@ -200,7 +218,7 @@ export async function generateAffidavitDocx(data: {
           new Table({
             borders: tableBorders,
             width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [headerRow(["S.No.", "Title of the Article", "Journal Details", "Points"]), ...pubRows],
+            rows: [headerRow(["S.No.", "Title of the Article", "Journal Details", "Category", "Points"]), ...pubRows],
           }),
 
           p("", { spacing: 400 }),

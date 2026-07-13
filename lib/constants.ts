@@ -66,4 +66,8 @@ export const DOCUMENT_TYPES = [
   "Last College Relieving Letter",
 ] as const;
 
+export const PUBLICATION_CATEGORIES = ["Category I", "Category II", "Category III", "Category IV", "Category V"] as const;
+
+export const HIDS_PRINCIPAL_NAME = "Dr. Rajan Gupta";
+
 export const OTHER = "Other (specify)";

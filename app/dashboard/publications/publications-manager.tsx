@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Field, TextInput, Select, PrimaryButton, SecondaryButton } from "@/components/form-controls";
 import { FileUpload } from "@/components/file-upload";
-import { PUBLICATION_TYPES, AUTHOR_POSITIONS } from "@/lib/constants";
+import { PUBLICATION_TYPES, AUTHOR_POSITIONS, PUBLICATION_CATEGORIES } from "@/lib/constants";
 
 type Publication = {
   id: string;
@@ -14,6 +14,7 @@ type Publication = {
   publication_year: number | null;
   publication_type: string | null;
   author_position: string | null;
+  category: string | null;
   self_assigned_points: number;
   verified_points: number | null;
   status: string;
@@ -23,7 +24,7 @@ type Publication = {
 
 const emptyForm = {
   title: "", journal_name: "", publication_year: "", publication_type: "",
-  author_position: "", self_assigned_points: "", file_path: "", file_name: "",
+  author_position: "", category: "", self_assigned_points: "", file_path: "", file_name: "",
 };
 
 export default function PublicationsManager({
@@ -61,6 +62,7 @@ export default function PublicationsManager({
       publication_year: pub.publication_year ? String(pub.publication_year) : "",
       publication_type: pub.publication_type ?? "",
       author_position: pub.author_position ?? "",
+      category: pub.category ?? "",
       self_assigned_points: String(pub.self_assigned_points),
       file_path: pub.file_path ?? "",
       file_name: pub.file_name ?? "",
@@ -80,6 +82,7 @@ export default function PublicationsManager({
       publication_year: form.publication_year ? Number(form.publication_year) : null,
       publication_type: form.publication_type || null,
       author_position: form.author_position || null,
+      category: form.category || null,
       self_assigned_points: form.self_assigned_points ? Number(form.self_assigned_points) : 0,
       file_path: form.file_path || null,
       file_name: form.file_name || null,
@@ -166,6 +169,14 @@ export default function PublicationsManager({
                   {AUTHOR_POSITIONS.map((a) => <option key={a} value={a}>{a}</option>)}
                 </Select>
               </Field>
+              <Field label="Category" required hint="DCI publication category">
+                <Select value={form.category} onChange={(e) => update("category", e.target.value)}>
+                  <option value="">Select</option>
+                  {PUBLICATION_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </Select>
+              </Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Points (self-assigned)" required hint="Admin will verify and can adjust this">
                 <TextInput
                   value={form.self_assigned_points}
@@ -206,7 +217,7 @@ export default function PublicationsManager({
                 <p className="mt-1 text-sm text-muted">
                   {pub.journal_name} · {pub.publication_year} · {pub.publication_type}
                 </p>
-                <p className="text-sm text-muted">{pub.author_position} · {pub.self_assigned_points} pts self-assigned</p>
+                <p className="text-sm text-muted">{pub.author_position} · {pub.category ?? "No category"} · {pub.self_assigned_points} pts self-assigned</p>
                 {pub.file_path && <ViewAttachment path={pub.file_path} name={pub.file_name ?? "attachment"} />}
               </div>
               <div className="flex shrink-0 items-center gap-2">

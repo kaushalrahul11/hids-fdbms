@@ -325,14 +325,20 @@ export default function FacultyEditForm({
               <TextInput value={promoteNotes} onChange={(e) => setPromoteNotes(e.target.value)} />
             </Field>
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <PrimaryButton type="button" onClick={handlePromote} loading={promoting} disabled={!promoteTarget}>
               Promote
             </PrimaryButton>
+            <a href={`/api/admin/faculty/${facultyId}/promotion-letter`} className="text-sm font-medium text-teal-600 hover:text-teal-700">
+              Download Promotion Letter (latest)
+            </a>
           </div>
         </Section>
 
         <Section title="Relieving">
+          <a href={`/api/admin/faculty/${facultyId}/experience-certificate`} className="mb-3 inline-block text-sm font-medium text-teal-600 hover:text-teal-700">
+            {status === "relieved" ? "Download Experience-cum-Relieving Certificate" : "Download Experience Certificate"}
+          </a>
           {status === "relieved" ? (
             <div>
               <p className="text-sm text-ink">
@@ -539,7 +545,7 @@ export default function FacultyEditForm({
                   <div>
                     <p className="text-sm font-medium text-ink">{pub.title}</p>
                     <p className="text-xs text-muted">
-                      {pub.journal_name} · {pub.publication_year} · {pub.publication_type} · {pub.author_position}
+                      {pub.journal_name} · {pub.publication_year} · {pub.publication_type} · {pub.author_position} · {pub.category ?? "No category"}
                       <br />Self-assigned: {pub.self_assigned_points} pts
                       {pub.status === "verified" && ` · Verified: ${pub.verified_points} pts`}
                       {pub.file_name && ` · 📎 ${pub.file_name}`}

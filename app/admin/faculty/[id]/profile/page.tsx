@@ -17,14 +17,21 @@ function formatYears(years: number) {
 export default async function AdminFacultyProfilePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
 
-  const [{ data: profile }, { data: history }, { data: qualifications }, { data: deptRow }] = await Promise.all([
+  const [{ data: profile }, { data: history }, { data: qualifications }, { data: deptRow }, { data: photoDoc }] = await Promise.all([
     supabase.from("faculty_profile").select("*").eq("id", params.id).single(),
     supabase.from("faculty_employment_history").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_qualifications").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_profile").select("department_id, departments(name)").eq("id", params.id).single(),
+    supabase.from("faculty_documents").select("file_path").eq("faculty_id", params.id).eq("document_type", "Photograph").maybeSingle(),
   ]);
 
   if (!profile) notFound();
+
+  let photoUrl: string | null = null;
+  if (photoDoc?.file_path) {
+    const { data } = await supabase.storage.from("faculty-documents").createSignedUrl(photoDoc.file_path, 3600);
+    photoUrl = data?.signedUrl ?? null;
+  }
 
   const priorYears = (history ?? []).reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
   const hidsYears = profile.doj_hids ? yearsBetween(profile.doj_hids, null) : 0;
@@ -38,9 +45,15 @@ export default async function AdminFacultyProfilePage({ params }: { params: { id
         <PrintButton />
       </div>
 
-      <div className="mb-6 border-b border-slate-200 pb-4">
-        <h1 className="font-display text-2xl font-semibold text-navy-900">{profile.full_name}</h1>
-        <p className="text-sm text-muted">{profile.present_designation} · {departmentName}</p>
+      <div className="mb-6 flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-navy-900">{profile.full_name}</h1>
+          <p className="text-sm text-muted">{profile.present_designation} · {departmentName}</p>
+        </div>
+        {photoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photoUrl} alt="Faculty photograph" className="h-28 w-24 rounded-md border border-slate-200 object-cover" />
+        )}
       </div>
 
       <div className="rounded-lg border border-teal-200 bg-teal-100 p-4 mb-6">

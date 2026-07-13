@@ -2,18 +2,31 @@
 
 import { useMemo } from "react";
 import { SecondaryButton } from "@/components/form-controls";
+import { yearsBetween, formatYears } from "@/lib/date-format";
+
+type HistoryEntry = { position: string; institution_name: string; from_date: string; to_date: string | null };
 
 type Row = {
   id: string;
   full_name: string;
+  father_name: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  social_category: string | null;
   email: string;
   mobile_no: string | null;
+  present_address: string;
   department_name: string;
   present_designation: string;
   doj_hids: string | null;
   sdc_reg_no: string | null;
   sdc_valid_upto: string | null;
+  state_dental_council: string | null;
   status: string;
+  qualifications: string;
+  employment_history: string;
+  historyRaw: HistoryEntry[];
+  relieving_date: string | null;
 };
 
 function daysUntil(dateStr: string) {
@@ -21,21 +34,55 @@ function daysUntil(dateStr: string) {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
-function downloadCsv(rows: Row[]) {
-  const headers = ["Name", "Email", "Mobile", "Department", "Designation", "DOJ HIDS", "SDC Reg No", "SDC Valid Upto", "Status"];
-  const lines = rows.map((r) =>
-    [r.full_name, r.email, r.mobile_no ?? "", r.department_name, r.present_designation, r.doj_hids ?? "", r.sdc_reg_no ?? "", r.sdc_valid_upto ?? "", r.status]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(",")
-  );
-  const csv = [headers.join(","), ...lines].join("\n");
+function toCsv(headers: string[], rows: string[][]) {
+  const lines = rows.map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+  return [headers.map((h) => `"${h}"`).join(","), ...lines].join("\n");
+}
+
+function download(filename: string, csv: string) {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `hids-faculty-list-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadFullList(rows: Row[]) {
+  const headers = [
+    "Name", "Father's Name", "Date of Birth", "Gender", "Social Category", "Email", "Mobile",
+    "Present Address", "Department", "Designation", "DOJ HIDS", "SDC Reg No", "SDC Valid Upto",
+    "State Dental Council", "Status", "Qualifications", "Employment History", "Relieving Date",
+  ];
+  const rowsOut = rows.map((r) => [
+    r.full_name, r.father_name ?? "", r.date_of_birth ?? "", r.gender ?? "", r.social_category ?? "",
+    r.email, r.mobile_no ?? "", r.present_address, r.department_name, r.present_designation,
+    r.doj_hids ?? "", r.sdc_reg_no ?? "", r.sdc_valid_upto ?? "", r.state_dental_council ?? "",
+    r.status, r.qualifications, r.employment_history, r.relieving_date ?? "",
+  ]);
+  download(`hids-faculty-full-list-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(headers, rowsOut));
+}
+
+function downloadExperienceReport(rows: Row[]) {
+  const headers = [
+    "Name", "Department", "Designation", "HIDS Duration (till date)",
+    "Previous Institutions & Durations", "Total Experience (till date)",
+  ];
+  const rowsOut = rows.map((r) => {
+    const hidsYears = r.doj_hids ? yearsBetween(r.doj_hids, r.relieving_date) : 0;
+    const priorYears = r.historyRaw.reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
+    const previousText = r.historyRaw
+      .map((h) => `${h.institution_name} (${h.position}, ${h.from_date} to ${h.to_date ?? "present"}, ${formatYears(yearsBetween(h.from_date, h.to_date))})`)
+      .join(" | ");
+    return [
+      r.full_name, r.department_name, r.present_designation,
+      r.doj_hids ? formatYears(hidsYears) : "—",
+      previousText || "None on record",
+      formatYears(hidsYears + priorYears),
+    ];
+  });
+  download(`hids-faculty-experience-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(headers, rowsOut));
 }
 
 export default function ReportsView({ rows }: { rows: Row[] }) {
@@ -58,10 +105,20 @@ export default function ReportsView({ rows }: { rows: Row[] }) {
           <h1 className="font-display text-2xl font-semibold text-navy-900">Reports</h1>
           <p className="mt-1 text-sm text-muted">{rows.length} faculty on record</p>
         </div>
-        <SecondaryButton type="button" onClick={() => downloadCsv(rows)}>
-          Export full faculty list (CSV)
-        </SecondaryButton>
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton type="button" onClick={() => downloadFullList(rows)}>
+            Export Full Faculty List (all fields)
+          </SecondaryButton>
+          <SecondaryButton type="button" onClick={() => downloadExperienceReport(rows)}>
+            Export Experience Duration Report
+          </SecondaryButton>
+        </div>
       </div>
+
+      <p className="text-xs text-muted -mt-4">
+        Need an experience or experience-cum-relieving certificate for a specific faculty member?
+        Open their record under Faculty → View/Edit — the download link is in the Relieving section.
+      </p>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <SummaryCard title="By Department" counts={byDepartment} />
