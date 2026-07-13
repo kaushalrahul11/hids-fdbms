@@ -19,6 +19,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   if (profile?.role !== "admin") redirect("/dashboard");
 
+  const { count: pendingEditCount } = await supabase
+    .from("faculty_edit_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+
   return (
     <div className="min-h-screen bg-canvas">
       <header className="border-b border-slate-200 bg-navy-900">
@@ -32,6 +37,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <NavLink href="/admin/faculty">Faculty</NavLink>
               <NavLink href="/admin/faculty/new">Add Faculty</NavLink>
               <NavLink href="/admin/faculty/import">Import Faculty</NavLink>
+              <NavLink href="/admin/edit-requests" badge={pendingEditCount || undefined}>Edit Requests</NavLink>
               <NavLink href="/admin/reports">Reports</NavLink>
             </nav>
           </div>
@@ -48,13 +54,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   );
 }
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({ href, children, badge }: { href: string; children: React.ReactNode; badge?: number }) {
   return (
     <Link
       href={href}
-      className="rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-navy-800 hover:text-white"
+      className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-slate-300 hover:bg-navy-800 hover:text-white"
     >
       {children}
+      {badge ? (
+        <span className="rounded-full bg-teal-500 px-1.5 py-0.5 text-xs font-semibold text-white">{badge}</span>
+      ) : null}
     </Link>
   );
 }
