@@ -3,6 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
 
+function homeFor(role: string | undefined) {
+  if (role === "admin") return "/admin";
+  if (role === "accounts") return "/accounts";
+  return "/dashboard";
+}
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });
 
@@ -49,7 +55,7 @@ export async function middleware(request: NextRequest) {
     // Logged in but sitting on the login page -> send onward by role
     if (path === "/login") {
       const url = request.nextUrl.clone();
-      url.pathname = profile?.role === "admin" ? "/admin" : "/dashboard";
+      url.pathname = homeFor(profile?.role);
       return NextResponse.redirect(url);
     }
 
@@ -79,7 +85,14 @@ export async function middleware(request: NextRequest) {
       // Non-admins can't reach /admin
       if (path.startsWith("/admin") && profile.role !== "admin") {
         const url = request.nextUrl.clone();
-        url.pathname = "/dashboard";
+        url.pathname = homeFor(profile.role);
+        return NextResponse.redirect(url);
+      }
+
+      // Only accounts/admin can reach /accounts
+      if (path.startsWith("/accounts") && profile.role !== "accounts" && profile.role !== "admin") {
+        const url = request.nextUrl.clone();
+        url.pathname = homeFor(profile.role);
         return NextResponse.redirect(url);
       }
     }

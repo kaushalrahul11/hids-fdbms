@@ -47,7 +47,7 @@ const PROMOTION_RULES: Record<string, { next: string; minYears: number; minPoint
 
 export default function FacultyEditForm({
   facultyId, profile, facultyProfile, history, qualifications, departments,
-  colleges, universities, specialities, councils, publications, documents,
+  colleges, universities, specialities, councils, publications, documents, promotionHistory,
 }: {
   facultyId: string;
   profile: { status: string; profile_completed: boolean };
@@ -61,6 +61,7 @@ export default function FacultyEditForm({
   councils: string[];
   publications: any[];
   documents: any[];
+  promotionHistory: any[];
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -88,6 +89,8 @@ export default function FacultyEditForm({
   // Promotion state
   const [promoteTarget, setPromoteTarget] = useState("");
   const [promoteNotes, setPromoteNotes] = useState("");
+  const [promotionDate, setPromotionDate] = useState(new Date().toISOString().slice(0, 10));
+  const [letterNo, setLetterNo] = useState("");
   const [promoting, setPromoting] = useState(false);
 
   // Relieving state
@@ -96,8 +99,9 @@ export default function FacultyEditForm({
   const [relievingReason, setRelievingReason] = useState(facultyProfile.relieving_reason ?? "");
   const [relieving, setRelieving] = useState(false);
 
+  const currentSegmentStart = promotionHistory[0]?.promotion_date ?? form.doj_hids;
   const priorYears = rows.reduce((sum, r) => (r.from_date ? sum + yearsBetween(r.from_date, r.to_date || null) : sum), 0);
-  const hidsYears = form.doj_hids ? yearsBetween(form.doj_hids, null) : 0;
+  const hidsYears = currentSegmentStart ? yearsBetween(currentSegmentStart, null) : 0;
   const totalYears = priorYears + hidsYears;
   const verifiedPoints = publications.filter((p) => p.status === "verified").reduce((s, p) => s + (p.verified_points ?? 0), 0);
 
@@ -137,15 +141,35 @@ export default function FacultyEditForm({
   }
 
   async function handlePromote() {
-    if (!promoteTarget) return;
-    if (!confirm(`Promote ${form.full_name} from ${currentDesignation} to ${promoteTarget}?`)) return;
+    if (!promoteTarget || !promotionDate || !letterNo) {
+      alert("Promotion date and letter number are required.");
+      return;
+    }
+    if (!confirm(`Promote ${form.full_name} from ${currentDesignation} to ${promoteTarget}, effective ${promotionDate}?`)) return;
     setPromoting(true);
     const { data: userData } = await supabase.auth.getUser();
     const adminId = userData.user?.id;
 
+    // The segment just closed out started either at their last promotion
+    // (if any) or their original date of joining HIDS.
+    const segmentStart = currentSegmentStart;
+
+    if (segmentStart) {
+      await supabase.from("faculty_employment_history").insert({
+        faculty_id: facultyId,
+        position: currentDesignation,
+        institution_name: "Himachal Institute of Dental Sciences",
+        from_date: segmentStart,
+        to_date: promotionDate,
+        source: "promotion",
+        sort_order: rows.length,
+      });
+    }
+
     await supabase.from("promotion_history").insert({
       faculty_id: facultyId, from_designation: currentDesignation, to_designation: promoteTarget,
-      promoted_by: adminId, experience_years_snapshot: totalYears.toFixed(2), points_snapshot: verifiedPoints,
+      promoted_by: adminId, promotion_date: promotionDate, letter_no: letterNo,
+      experience_years_snapshot: totalYears.toFixed(2), points_snapshot: verifiedPoints,
       notes: promoteNotes || null,
     });
     await supabase.from("faculty_profile").update({ present_designation: promoteTarget }).eq("id", facultyId);
@@ -157,6 +181,7 @@ export default function FacultyEditForm({
     setPromoting(false);
     setPromoteTarget("");
     setPromoteNotes("");
+    setLetterNo("");
     update("present_designation", promoteTarget);
     router.refresh();
   }
@@ -321,6 +346,14 @@ export default function FacultyEditForm({
                 {DESIGNATIONS.filter((d) => d !== currentDesignation).map((d) => <option key={d} value={d}>{d}</option>)}
               </Select>
             </Field>
+            <Field label="Effective date of promotion" required>
+              <TextInput type="date" value={promotionDate} onChange={(e) => setPromotionDate(e.target.value)} />
+            </Field>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Promotion letter no." required>
+              <TextInput value={letterNo} onChange={(e) => setLetterNo(e.target.value)} placeholder="e.g. HIDS/PAO/2026/045" />
+            </Field>
             <Field label="Notes (optional)">
               <TextInput value={promoteNotes} onChange={(e) => setPromoteNotes(e.target.value)} />
             </Field>
@@ -333,6 +366,25 @@ export default function FacultyEditForm({
               Download Promotion Letter (latest)
             </a>
           </div>
+
+          {promotionHistory.length > 0 && (
+            <div className="mt-5 border-t border-slate-100 pt-4">
+              <p className="mb-2 text-sm font-medium text-navy-900">Promotion History</p>
+              <div className="space-y-2">
+                {promotionHistory.map((ph) => (
+                  <div key={ph.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 p-2.5 text-sm">
+                    <span>
+                      {ph.from_designation} → {ph.to_designation} · {ph.promotion_date}
+                      {ph.letter_no && ` · ${ph.letter_no}`}
+                    </span>
+                    <a href={`/api/admin/faculty/${facultyId}/promotion-letter?promotionId=${ph.id}`} className="font-medium text-teal-600 hover:text-teal-700">
+                      Download Letter
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Section>
 
         <Section title="Relieving">

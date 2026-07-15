@@ -37,6 +37,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <NavLink href="/admin/faculty">Faculty</NavLink>
               <NavLink href="/admin/faculty/new">Add Faculty</NavLink>
               <NavLink href="/admin/faculty/import">Import Faculty</NavLink>
+              <NavLink href="/admin/accounts-users/new">Add Accounts User</NavLink>
               <NavLink href="/admin/edit-requests" badge={pendingEditCount || undefined}>Edit Requests</NavLink>
               <NavLink href="/admin/reports">Reports</NavLink>
             </nav>

@@ -33,7 +33,7 @@ export default function LoginPage() {
       .eq("id", signInData.user.id)
       .single();
 
-    router.push(profile?.role === "admin" ? "/admin" : "/dashboard");
+    router.push(profile?.role === "admin" ? "/admin" : profile?.role === "accounts" ? "/accounts" : "/dashboard");
     router.refresh();
   }
 

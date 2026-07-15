@@ -5,18 +5,33 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Field, TextInput, Select, PrimaryButton, SecondaryButton } from "@/components/form-controls";
 import { yearsBetween, formatYears } from "@/lib/date-format";
-import { GENDERS, SOCIAL_CATEGORIES, INDIAN_STATES, FACULTY_EDITABLE_FIELDS, FIELD_LABELS } from "@/lib/constants";
+import {
+  GENDERS, SOCIAL_CATEGORIES, INDIAN_STATES, FACULTY_EDITABLE_FIELDS, FIELD_LABELS,
+  DESIGNATIONS, HISTORY_POSITIONS, QUALIFICATION_TYPES,
+} from "@/lib/constants";
+import { buildDesignationBreakdown, type HistoryRow } from "@/lib/experience";
 import { SelectOrOther } from "@/components/select-or-other";
 
 type EditRequest = {
   id: string;
-  changes: Record<string, { old: string; new: string }>;
+  changes: Record<string, any>;
   status: string;
   requested_at: string;
 };
 
+type QualificationRow = {
+  id?: string; degree_type: string; degree_name: string; college_name: string;
+  university_name: string; year_month_passing: string; speciality: string;
+};
+type EmploymentRow = { id?: string; position: string; institution_name: string; from_date: string; to_date: string; source?: string };
+
+const emptyQualification: QualificationRow = {
+  degree_type: "", degree_name: "", college_name: "", university_name: "", year_month_passing: "", speciality: "",
+};
+
 export default function ProfileView({
   profile, history, qualifications, departmentName, photoUrl, councilNames, pendingRequest,
+  departments, collegeNames, universityNames, specialityNames,
 }: {
   profile: Record<string, any>;
   history: any[];
@@ -25,6 +40,10 @@ export default function ProfileView({
   photoUrl: string | null;
   councilNames: string[];
   pendingRequest: EditRequest | null;
+  departments: { id: number; name: string }[];
+  collegeNames: string[];
+  universityNames: string[];
+  specialityNames: string[];
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -34,19 +53,52 @@ export default function ProfileView({
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
+  const manualHistory = history.filter((h) => h.source !== "promotion");
+  const lockedHistory = history.filter((h) => h.source === "promotion");
+
+  const [quals, setQuals] = useState<QualificationRow[]>(
+    qualifications.length
+      ? qualifications.map((q) => ({
+          id: q.id, degree_type: q.degree_type ?? "", degree_name: q.degree_name ?? "",
+          college_name: q.college_name ?? "", university_name: q.university_name ?? "",
+          year_month_passing: q.year_month_passing ?? "", speciality: q.speciality ?? "",
+        }))
+      : [{ ...emptyQualification }]
+  );
+  const [manualRows, setManualRows] = useState<EmploymentRow[]>(
+    manualHistory.length
+      ? manualHistory.map((h) => ({ id: h.id, position: h.position, institution_name: h.institution_name, from_date: h.from_date ?? "", to_date: h.to_date ?? "" }))
+      : [{ position: "", institution_name: "", from_date: "", to_date: "" }]
+  );
+
   function update(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
   }
+  function updateQual(i: number, field: keyof QualificationRow, value: string) {
+    setQuals((q) => q.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
+  }
+  function addQual() { setQuals((q) => [...q, { ...emptyQualification }]); }
+  function removeQual(i: number) { setQuals((q) => q.filter((_, idx) => idx !== i)); }
+  function updateRow(i: number, field: keyof EmploymentRow, value: string) {
+    setManualRows((r) => r.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
+  }
+  function addRow() { setManualRows((r) => [...r, { position: "", institution_name: "", from_date: "", to_date: "" }]); }
+  function removeRow(i: number) { setManualRows((r) => r.filter((_, idx) => idx !== i)); }
 
-  const priorYears = history.reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
-  const hidsYears = profile.doj_hids ? yearsBetween(profile.doj_hids, null) : 0;
-  const totalYears = priorYears + hidsYears;
+  const { buckets, totalYears } = buildDesignationBreakdown(
+    lockedHistory as HistoryRow[],
+    profile.present_designation,
+    lockedHistory.length > 0 ? lockedHistory[lockedHistory.length - 1].to_date : profile.doj_hids,
+    profile.relieving_date ?? null
+  );
+  const manualPriorYears = manualHistory.reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
+  const grandTotalYears = totalYears + manualPriorYears;
 
   async function handleSubmitRequest() {
     setSubmitting(true);
     setError(null);
 
-    const changes: Record<string, { old: string; new: string }> = {};
+    const changes: Record<string, any> = {};
     FACULTY_EDITABLE_FIELDS.forEach((field) => {
       const oldVal = profile[field] ?? "";
       const newVal = form[field] ?? "";
@@ -54,6 +106,20 @@ export default function ProfileView({
         changes[field] = { old: String(oldVal), new: String(newVal) };
       }
     });
+
+    const oldQuals = JSON.stringify(qualifications.map((q) => ({ degree_type: q.degree_type, degree_name: q.degree_name, college_name: q.college_name, university_name: q.university_name, year_month_passing: q.year_month_passing, speciality: q.speciality })));
+    const newQualsClean = quals.filter((q) => q.degree_type && q.college_name && q.university_name);
+    const newQuals = JSON.stringify(newQualsClean.map(({ id, ...rest }) => rest));
+    if (oldQuals !== newQuals) {
+      changes.qualifications = { old: qualifications, new: newQualsClean };
+    }
+
+    const oldManual = JSON.stringify(manualHistory.map((h) => ({ position: h.position, institution_name: h.institution_name, from_date: h.from_date, to_date: h.to_date })));
+    const newManualClean = manualRows.filter((r) => r.position && r.institution_name && r.from_date);
+    const newManual = JSON.stringify(newManualClean.map(({ id, ...rest }) => rest));
+    if (oldManual !== newManual) {
+      changes.employment_history = { old: manualHistory, new: newManualClean };
+    }
 
     if (Object.keys(changes).length === 0) {
       setError("No changes to submit.");
@@ -96,7 +162,7 @@ export default function ProfileView({
           <div>
             <h1 className="font-display text-2xl font-semibold text-navy-900">My Profile</h1>
             <p className="mt-1 text-sm text-muted">
-              {editing ? "Edits require admin approval before they take effect." : "Most fields are read-only — request an edit for corrections."}
+              {editing ? "Edits require admin approval before they take effect." : "Request an edit for any correction — nothing changes until admin approves it."}
             </p>
           </div>
         </div>
@@ -110,11 +176,17 @@ export default function ProfileView({
           <p className="text-sm font-semibold text-amber-800">Edit request pending admin approval</p>
           <p className="mt-1 text-xs text-amber-700">Submitted {new Date(pendingRequest.requested_at).toLocaleDateString()}</p>
           <div className="mt-3 space-y-1">
-            {Object.entries(pendingRequest.changes).map(([field, change]) => (
-              <p key={field} className="text-sm text-amber-900">
-                <strong>{FIELD_LABELS[field] ?? field}:</strong> {change.old || "—"} → {change.new || "—"}
-              </p>
-            ))}
+            {Object.entries(pendingRequest.changes).map(([field, change]: [string, any]) =>
+              field === "qualifications" || field === "employment_history" ? (
+                <p key={field} className="text-sm text-amber-900">
+                  <strong>{FIELD_LABELS[field] ?? field}:</strong> {change.new.length} item(s) proposed
+                </p>
+              ) : (
+                <p key={field} className="text-sm text-amber-900">
+                  <strong>{FIELD_LABELS[field] ?? field}:</strong> {change.old || "—"} → {change.new || "—"}
+                </p>
+              )
+            )}
           </div>
           <div className="mt-3">
             <SecondaryButton type="button" onClick={handleCancelRequest} disabled={cancelling}>{cancelling ? "Cancelling..." : "Cancel Request"}</SecondaryButton>
@@ -124,10 +196,13 @@ export default function ProfileView({
 
       <div className="rounded-lg border border-teal-200 bg-teal-100 p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Total Experience (auto-calculated)</p>
-        <p className="mt-1 font-display text-2xl font-semibold text-navy-900">{formatYears(totalYears)}</p>
-        <p className="mt-1 text-xs text-navy-900/70">
-          {formatYears(hidsYears)} at HIDS + {formatYears(priorYears)} at previous institutions
-        </p>
+        <p className="mt-1 font-display text-2xl font-semibold text-navy-900">{formatYears(grandTotalYears)}</p>
+        <div className="mt-2 grid gap-1 text-xs text-navy-900/70 sm:grid-cols-2">
+          {buckets.filter((b) => b.totalYears > 0).map((b) => (
+            <span key={b.label}>{b.label}: {formatYears(b.totalYears)}</span>
+          ))}
+          {manualPriorYears > 0 && <span>Previous colleges: {formatYears(manualPriorYears)}</span>}
+        </div>
       </div>
 
       {editing ? (
@@ -165,11 +240,112 @@ export default function ProfileView({
             <Field label="Aadhaar"><TextInput value={form.aadhaar_no ?? ""} onChange={(e) => update("aadhaar_no", e.target.value)} /></Field>
           </Section>
 
-          <Section title="Present Address">
-            <AddressFields prefix="present" form={form} update={update} />
+          <Section title="Present Address"><AddressFields prefix="present" form={form} update={update} /></Section>
+          <Section title="Permanent Address"><AddressFields prefix="permanent" form={form} update={update} /></Section>
+
+          <Section title="Qualifications">
+            <div className="space-y-4">
+              {quals.map((row, i) => (
+                <div key={row.id ?? i} className="rounded-md border border-slate-200 p-4">
+                  <TwoCol>
+                    <Field label="Degree type">
+                      <Select value={row.degree_type} onChange={(e) => updateQual(i, "degree_type", e.target.value)}>
+                        <option value="">Select</option>
+                        {QUALIFICATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </Select>
+                    </Field>
+                    {row.degree_type === "Other" && (
+                      <Field label="Degree name"><TextInput value={row.degree_name} onChange={(e) => updateQual(i, "degree_name", e.target.value)} /></Field>
+                    )}
+                  </TwoCol>
+                  <TwoCol>
+                    <Field label="College"><SelectOrOther value={row.college_name} onChange={(v) => updateQual(i, "college_name", v)} options={collegeNames} /></Field>
+                    <Field label="University"><SelectOrOther value={row.university_name} onChange={(v) => updateQual(i, "university_name", v)} options={universityNames} /></Field>
+                  </TwoCol>
+                  <TwoCol>
+                    <Field label="Year/month passing"><TextInput value={row.year_month_passing} onChange={(e) => updateQual(i, "year_month_passing", e.target.value)} /></Field>
+                    {row.degree_type === "MDS/PG" && (
+                      <Field label="Speciality"><SelectOrOther value={row.speciality} onChange={(v) => updateQual(i, "speciality", v)} options={specialityNames} /></Field>
+                    )}
+                  </TwoCol>
+                  <button type="button" onClick={() => removeQual(i)} className="mt-2 text-sm text-red-500 hover:text-red-600">Remove</button>
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={addQual} className="text-sm font-medium text-teal-600 hover:text-teal-700">+ Add qualification</button>
           </Section>
-          <Section title="Permanent Address">
-            <AddressFields prefix="permanent" form={form} update={update} />
+
+          <Section title="Current Appointment">
+            <TwoCol>
+              <Field label="Department">
+                <Select value={form.department_id ?? ""} onChange={(e) => update("department_id", e.target.value)}>
+                  <option value="">Select</option>
+                  {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Present designation">
+                <Select value={form.present_designation ?? ""} onChange={(e) => update("present_designation", e.target.value)}>
+                  <option value="">Select</option>
+                  {DESIGNATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </Select>
+              </Field>
+            </TwoCol>
+            <TwoCol>
+              <Field label="Date of joining HIDS"><TextInput type="date" value={form.doj_hids ?? ""} onChange={(e) => update("doj_hids", e.target.value)} /></Field>
+              <Field label="Appt. order no."><TextInput value={form.present_appt_order_no ?? ""} onChange={(e) => update("present_appt_order_no", e.target.value)} /></Field>
+            </TwoCol>
+            <Field label="Order date"><TextInput type="date" value={form.present_appt_order_date ?? ""} onChange={(e) => update("present_appt_order_date", e.target.value)} /></Field>
+            <p className="text-xs text-muted">Changing designation here goes through admin approval — it won't auto-trigger the promotion workflow.</p>
+          </Section>
+
+          <Section title="Previous College">
+            <Field label="College name"><TextInput value={form.last_college_name ?? ""} onChange={(e) => update("last_college_name", e.target.value)} /></Field>
+            <TwoCol>
+              <Field label="Designation there"><TextInput value={form.last_college_designation ?? ""} onChange={(e) => update("last_college_designation", e.target.value)} /></Field>
+              <Field label="Relieving date"><TextInput type="date" value={form.last_college_relieving_date ?? ""} onChange={(e) => update("last_college_relieving_date", e.target.value)} /></Field>
+            </TwoCol>
+            <TwoCol>
+              <Field label="Previous appt. order no."><TextInput value={form.previous_appt_order_no ?? ""} onChange={(e) => update("previous_appt_order_no", e.target.value)} /></Field>
+              <Field label="Order date"><TextInput type="date" value={form.previous_appt_order_date ?? ""} onChange={(e) => update("previous_appt_order_date", e.target.value)} /></Field>
+            </TwoCol>
+            <TwoCol>
+              <Field label="Previous relieving order no."><TextInput value={form.previous_relieving_order_no ?? ""} onChange={(e) => update("previous_relieving_order_no", e.target.value)} /></Field>
+              <Field label="Order date"><TextInput type="date" value={form.previous_relieving_order_date ?? ""} onChange={(e) => update("previous_relieving_order_date", e.target.value)} /></Field>
+            </TwoCol>
+          </Section>
+
+          <Section title="Employment History (previous colleges)">
+            {lockedHistory.length > 0 && (
+              <div className="mb-4 space-y-2">
+                <p className="text-xs font-medium uppercase text-muted">Locked — HIDS promotion records (admin-managed)</p>
+                {lockedHistory.map((h) => (
+                  <div key={h.id} className="rounded-md bg-slate-50 p-3 text-sm text-muted">
+                    {h.position} — {h.institution_name} · {h.from_date} to {h.to_date}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="space-y-4">
+              {manualRows.map((row, i) => (
+                <div key={row.id ?? i} className="rounded-md border border-slate-200 p-4">
+                  <TwoCol>
+                    <Field label="Position">
+                      <Select value={row.position} onChange={(e) => updateRow(i, "position", e.target.value)}>
+                        <option value="">Select</option>
+                        {HISTORY_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Institution"><TextInput value={row.institution_name} onChange={(e) => updateRow(i, "institution_name", e.target.value)} /></Field>
+                  </TwoCol>
+                  <TwoCol>
+                    <Field label="From date"><TextInput type="date" value={row.from_date} onChange={(e) => updateRow(i, "from_date", e.target.value)} /></Field>
+                    <Field label="To date" hint="Blank if current"><TextInput type="date" value={row.to_date} onChange={(e) => updateRow(i, "to_date", e.target.value)} /></Field>
+                  </TwoCol>
+                  <button type="button" onClick={() => removeRow(i)} className="mt-2 text-sm text-red-500 hover:text-red-600">Remove</button>
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={addRow} className="text-sm font-medium text-teal-600 hover:text-teal-700">+ Add position</button>
           </Section>
 
           <Section title="Council Registration">
@@ -230,7 +406,7 @@ export default function ProfileView({
 
           <Section title="Qualifications">
             {qualifications.length === 0 ? (
-              <p className="text-sm text-muted">None on record. Contact admin to add.</p>
+              <p className="text-sm text-muted">None on record.</p>
             ) : (
               <div className="space-y-3">
                 {qualifications.map((q) => (
@@ -257,7 +433,10 @@ export default function ProfileView({
               <div className="space-y-3">
                 {history.map((h) => (
                   <div key={h.id} className="rounded-md border border-slate-200 p-3 text-sm">
-                    <p className="font-medium text-ink">{h.position} — {h.institution_name}</p>
+                    <p className="font-medium text-ink">
+                      {h.position} — {h.institution_name}
+                      {h.source === "promotion" && <span className="ml-2 text-xs text-teal-600">(HIDS record)</span>}
+                    </p>
                     <p className="text-muted">{h.from_date} to {h.to_date ?? "present"} ({formatYears(yearsBetween(h.from_date, h.to_date))})</p>
                   </div>
                 ))}
@@ -319,7 +498,7 @@ function TwoCol({ children }: { children: React.ReactNode }) {
 
 function Row({ label, value }: { label: string; value: string | null | undefined }) {
   return (
-    <div className="flex flex-col gap-0.5 py-2 border-b border-slate-100 last:border-0 sm:flex-row sm:justify-between sm:gap-4">
+    <div className="flex flex-col gap-0.5 border-b border-slate-100 py-2 last:border-0 sm:flex-row sm:justify-between sm:gap-4">
       <span className="text-sm text-muted">{label}</span>
       <span className="text-sm font-medium text-ink sm:text-right">{value || "—"}</span>
     </div>

@@ -12,11 +12,13 @@ type Request = {
   faculty_id: string;
   faculty_name: string;
   faculty_email: string;
-  changes: Record<string, { old: string; new: string }>;
+  changes: Record<string, any>;
   status: string;
   requested_at: string;
   admin_notes: string | null;
 };
+
+const LIST_FIELDS = ["qualifications", "employment_history"];
 
 export default function EditRequestsView({ requests }: { requests: Request[] }) {
   const router = useRouter();
@@ -33,23 +35,60 @@ export default function EditRequestsView({ requests }: { requests: Request[] }) 
     const { data: userData } = await supabase.auth.getUser();
     const adminId = userData.user?.id;
 
+    const scalarChanges = Object.entries(req.changes).filter(([field]) => !LIST_FIELDS.includes(field));
     const payload: Record<string, any> = {};
-    Object.entries(req.changes).forEach(([field, change]) => {
-      payload[field] = change.new || null;
+    scalarChanges.forEach(([field, change]) => {
+      payload[field] = (change as any).new || null;
     });
 
-    const { error: updateError } = await supabase.from("faculty_profile").update(payload).eq("id", req.faculty_id);
-    if (updateError) {
-      alert(`Couldn't apply changes: ${updateError.message}`);
-      setProcessingId(null);
-      return;
+    if (Object.keys(payload).length > 0) {
+      const { error: updateError } = await supabase.from("faculty_profile").update(payload).eq("id", req.faculty_id);
+      if (updateError) {
+        alert(`Couldn't apply changes: ${updateError.message}`);
+        setProcessingId(null);
+        return;
+      }
     }
 
-    const auditRows = Object.entries(req.changes).map(([field, change]) => ({
+    const auditRows = scalarChanges.map(([field, change]) => ({
       table_name: "faculty_profile", record_id: req.faculty_id, faculty_id: req.faculty_id,
-      field_name: field, old_value: change.old, new_value: change.new, changed_by: adminId,
+      field_name: field, old_value: (change as any).old, new_value: (change as any).new, changed_by: adminId,
     }));
-    await supabase.from("audit_log").insert(auditRows);
+
+    // Qualifications: replace-all
+    if (req.changes.qualifications) {
+      await supabase.from("faculty_qualifications").delete().eq("faculty_id", req.faculty_id);
+      const newQuals = req.changes.qualifications.new as any[];
+      if (newQuals.length > 0) {
+        await supabase.from("faculty_qualifications").insert(
+          newQuals.map((q, idx) => ({ faculty_id: req.faculty_id, ...q, sort_order: idx }))
+        );
+      }
+      auditRows.push({
+        table_name: "faculty_qualifications", record_id: req.faculty_id, faculty_id: req.faculty_id,
+        field_name: "qualifications", old_value: `${req.changes.qualifications.old.length} item(s)`,
+        new_value: `${newQuals.length} item(s)`, changed_by: adminId,
+      });
+    }
+
+    // Employment history: replace only the manually-entered rows, leave
+    // promotion-generated rows untouched
+    if (req.changes.employment_history) {
+      await supabase.from("faculty_employment_history").delete().eq("faculty_id", req.faculty_id).eq("source", "manual");
+      const newHistory = req.changes.employment_history.new as any[];
+      if (newHistory.length > 0) {
+        await supabase.from("faculty_employment_history").insert(
+          newHistory.map((h, idx) => ({ faculty_id: req.faculty_id, ...h, source: "manual", sort_order: idx }))
+        );
+      }
+      auditRows.push({
+        table_name: "faculty_employment_history", record_id: req.faculty_id, faculty_id: req.faculty_id,
+        field_name: "employment_history", old_value: `${req.changes.employment_history.old.length} item(s)`,
+        new_value: `${newHistory.length} item(s)`, changed_by: adminId,
+      });
+    }
+
+    if (auditRows.length > 0) await supabase.from("audit_log").insert(auditRows);
 
     await supabase.from("faculty_edit_requests").update({
       status: "approved", reviewed_by: adminId, reviewed_at: new Date().toISOString(),
@@ -104,14 +143,29 @@ export default function EditRequestsView({ requests }: { requests: Request[] }) 
                 </PrimaryButton>
               </div>
             </div>
-            <div className="mt-3 space-y-1 rounded-md bg-white p-3">
-              {Object.entries(req.changes).map(([field, change]) => (
-                <p key={field} className="text-sm text-ink">
-                  <strong>{FIELD_LABELS[field] ?? field}:</strong>{" "}
-                  <span className="text-muted line-through">{change.old || "(empty)"}</span>{" "}
-                  → <span className="font-medium">{change.new || "(empty)"}</span>
-                </p>
-              ))}
+            <div className="mt-3 space-y-2 rounded-md bg-white p-3">
+              {Object.entries(req.changes).map(([field, change]: [string, any]) =>
+                LIST_FIELDS.includes(field) ? (
+                  <div key={field} className="text-sm text-ink">
+                    <strong>{FIELD_LABELS[field] ?? field}:</strong> proposing {change.new.length} item(s) (was {change.old.length})
+                    <ul className="mt-1 ml-4 list-disc text-xs text-muted">
+                      {change.new.map((item: any, i: number) => (
+                        <li key={i}>
+                          {field === "qualifications"
+                            ? `${item.degree_type === "Other" ? item.degree_name : item.degree_type} — ${item.college_name}, ${item.university_name} (${item.year_month_passing})`
+                            : `${item.position} — ${item.institution_name} (${item.from_date} to ${item.to_date ?? "present"})`}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p key={field} className="text-sm text-ink">
+                    <strong>{FIELD_LABELS[field] ?? field}:</strong>{" "}
+                    <span className="text-muted line-through">{change.old || "(empty)"}</span>{" "}
+                    → <span className="font-medium">{change.new || "(empty)"}</span>
+                  </p>
+                )
+              )}
             </div>
           </div>
         ))}

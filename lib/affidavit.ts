@@ -2,6 +2,8 @@ import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   WidthType, AlignmentType, HeadingLevel, BorderStyle, PageBreak, ImageRun,
 } from "docx";
+import { buildDesignationBreakdown, type HistoryRow } from "./experience";
+import { formatDotDate } from "./date-format";
 
 function cell(text: string, opts: { bold?: boolean; width?: number } = {}) {
   return new TableCell({
@@ -28,23 +30,10 @@ const DEGREE_LABELS: Record<string, string> = {
   Other: "Any Other",
 };
 
-const HISTORY_TABLE_POSITIONS = [
-  { key: "Tutor", label: "Tutor" },
-  { key: "Lecturer", label: "Lecturer/Asst. Professor" },
-  { key: "Reader", label: "Reader/Associate Professor" },
-  { key: "Professor", label: "Professor" },
-  { key: "Principal", label: "Dean/Principal" },
-];
-
-function yearsBetween(from: string, to: string | null) {
-  const start = new Date(from);
-  const end = to ? new Date(to) : new Date();
-  return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-}
-function formatYears(years: number) {
-  const y = Math.floor(years);
-  const m = Math.round((years - y) * 12);
-  return m > 0 ? `${y}y ${m}m` : `${y}y`;
+function currentFinancialYear(date: Date) {
+  // Indian FY: April - March
+  const y = date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  return `FY ${y}-${String((y + 1) % 100).padStart(2, "0")}`;
 }
 
 export async function generateAffidavitDocx(data: {
@@ -54,33 +43,20 @@ export async function generateAffidavitDocx(data: {
   publications: any[];
   photoBuffer?: Buffer | null;
   photoType?: "jpg" | "png" | "gif" | "bmp";
+  currentSegmentStart?: string | null;
+  salaryRecords?: { month: string; salary_amount: number | null; tds_amount: number | null }[];
 }) {
-  const { profile, qualifications, history, publications, photoBuffer, photoType = "jpg" } = data;
+  const {
+    profile, qualifications, history, publications, photoBuffer, photoType = "jpg",
+    currentSegmentStart, salaryRecords = [],
+  } = data;
 
-  // Build the experience table rows, grouping employment history + current
-  // HIDS appointment by position category
-  const historyByPosition: Record<string, { institutions: string[]; totalYears: number }> = {};
-  HISTORY_TABLE_POSITIONS.forEach((p) => (historyByPosition[p.key] = { institutions: [], totalYears: 0 }));
-
-  function bucketFor(position: string) {
-    if (position === "Professor & Head") return "Professor";
-    if (HISTORY_TABLE_POSITIONS.some((h) => h.key === position)) return position;
-    return "Professor"; // fallback bucket
-  }
-
-  (history ?? []).forEach((h: any) => {
-    const bucket = bucketFor(h.position);
-    const years = yearsBetween(h.from_date, h.to_date);
-    historyByPosition[bucket].institutions.push(`${h.institution_name} (${h.from_date} to ${h.to_date ?? "present"}, ${formatYears(years)})`);
-    historyByPosition[bucket].totalYears += years;
-  });
-
-  if (profile.doj_hids && profile.present_designation) {
-    const bucket = bucketFor(profile.present_designation);
-    const years = yearsBetween(profile.doj_hids, null);
-    historyByPosition[bucket].institutions.push(`Himachal Institute of Dental Sciences (${profile.doj_hids} to present, ${formatYears(years)})`);
-    historyByPosition[bucket].totalYears += years;
-  }
+  const { buckets } = buildDesignationBreakdown(
+    (history ?? []) as HistoryRow[],
+    profile.present_designation,
+    currentSegmentStart ?? profile.doj_hids,
+    profile.relieving_date ?? null
+  );
 
   const qualRows = (qualifications ?? []).map((q: any) =>
     new TableRow({
@@ -99,18 +75,46 @@ export async function generateAffidavitDocx(data: {
     qualRows.push(new TableRow({ children: ["", "", "", "", "", "", ""].map((t) => cell(t)) }));
   }
 
-  const experienceRows = HISTORY_TABLE_POSITIONS.map(({ key, label }) => {
-    const entry = historyByPosition[key];
+  const experienceRows = buckets.map(({ label, institutions, totalYears }) => {
     return new TableRow({
       children: [
         cell(label),
-        cell(entry.institutions.join("\n") || "—"),
-        cell(""), // From (merged into institutions text for multi-entry positions)
-        cell(""), // To
-        cell(entry.totalYears > 0 ? formatYears(entry.totalYears) : "N/A"),
+        cell(institutions.join("\n") || "—"),
+        cell(""),
+        cell(""),
+        cell(totalYears > 0 ? `${totalYears.toFixed(1)}y` : "N/A"),
       ],
     });
   });
+
+  // Last 6 calendar months of salary
+  const now = new Date();
+  const last6Months: { label: string; key: string }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    last6Months.push({ label: d.toLocaleString("en-US", { month: "long", year: "numeric" }), key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` });
+  }
+  const salaryByMonth = new Map((salaryRecords ?? []).map((r) => [r.month.slice(0, 7), r]));
+  const salaryRows = last6Months.map(({ label, key }) => {
+    const rec = salaryByMonth.get(key);
+    return new TableRow({
+      children: [cell(label), cell(rec?.salary_amount != null ? String(rec.salary_amount) : "—")],
+    });
+  });
+  const salaryTotal = last6Months.reduce((sum, { key }) => sum + (salaryByMonth.get(key)?.salary_amount ?? 0), 0);
+
+  // TDS grouped by Indian financial year, last 3 FYs
+  const fyLabels: string[] = [];
+  for (let i = 2; i >= 0; i--) {
+    fyLabels.push(currentFinancialYear(new Date(now.getFullYear(), now.getMonth() - i * 12, 1)));
+  }
+  const uniqueFys = Array.from(new Set(fyLabels));
+  const tdsByFy = new Map<string, number>();
+  (salaryRecords ?? []).forEach((r) => {
+    const fy = currentFinancialYear(new Date(r.month));
+    tdsByFy.set(fy, (tdsByFy.get(fy) ?? 0) + (r.tds_amount ?? 0));
+  });
+  const tdsRows = uniqueFys.map((fy) => new TableRow({ children: [cell(fy), cell(String(tdsByFy.get(fy) ?? 0))] }));
 
   const pubRows = (publications ?? [])
     .filter((pub: any) => pub.status === "verified")
@@ -209,10 +213,21 @@ export async function generateAffidavitDocx(data: {
           }),
           p("", { spacing: 120 }),
 
-          p("14.  TOTAL SALARY DRAWN FROM THE COLLEGE IN THE LAST SIX (6) MONTHS"),
-          p("      (Certified copy of Bank Statement/Pass Book must be attached — to be filled manually)", { size: 18 }),
-          p("15.  TDS FOR THE LAST THREE FINANCIAL YEARS"),
-          p("      (Copy of Form 16 from TRACES to be attached — to be filled manually)", { size: 18 }),
+          p("14.  TOTAL SALARY DRAWN FROM THE COLLEGE IN THE LAST SIX (6) MONTHS", { spacing: 60 }),
+          new Table({
+            borders: tableBorders,
+            width: { size: 60, type: WidthType.PERCENTAGE },
+            rows: [headerRow(["Month", "Salary Drawn"]), ...salaryRows, new TableRow({ children: [cell("Total", { bold: true }), cell(String(salaryTotal), { bold: true })] })],
+          }),
+          p("(Certified copy of Bank Statement/Pass Book to be attached)", { size: 16, spacing: 240 }),
+
+          p("15.  TDS FOR THE LAST THREE FINANCIAL YEARS", { spacing: 60 }),
+          new Table({
+            borders: tableBorders,
+            width: { size: 60, type: WidthType.PERCENTAGE },
+            rows: [headerRow(["Financial Year", "TDS Deducted"]), ...tdsRows],
+          }),
+          p("(Copy of Form 16 from TRACES to be attached)", { size: 16, spacing: 240 }),
 
           p("16.  DETAILS OF PUBLICATIONS (verified only):", { spacing: 60 }),
           new Table({

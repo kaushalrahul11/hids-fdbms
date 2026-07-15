@@ -20,17 +20,21 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
   }
 
-  const [{ data: profile }, { data: qualifications }, { data: history }, { data: publications }, { data: photoDoc }] = await Promise.all([
+  const [{ data: profile }, { data: qualifications }, { data: history }, { data: publications }, { data: photoDoc }, { data: promotions }, { data: salaryRecords }] = await Promise.all([
     supabase.from("faculty_profile").select("*").eq("id", params.id).single(),
     supabase.from("faculty_qualifications").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_employment_history").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_publications").select("*").eq("faculty_id", params.id),
     supabase.from("faculty_documents").select("file_path").eq("faculty_id", params.id).eq("document_type", "Photograph").maybeSingle(),
+    supabase.from("promotion_history").select("promotion_date").eq("faculty_id", params.id).order("promotion_date", { ascending: false }).limit(1),
+    supabase.from("faculty_salary_records").select("month, salary_amount, tds_amount").eq("faculty_id", params.id),
   ]);
 
   if (!profile) {
     return NextResponse.json({ error: "Faculty not found." }, { status: 404 });
   }
+
+  const currentSegmentStart = promotions?.[0]?.promotion_date ?? profile.doj_hids;
 
   let photoBuffer: Buffer | null = null;
   let photoType: "jpg" | "png" | "gif" | "bmp" = "jpg";
@@ -55,6 +59,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
     publications: publications ?? [],
     photoBuffer,
     photoType,
+    currentSegmentStart,
+    salaryRecords: salaryRecords ?? [],
   });
 
   const fileName = `Affidavit_${(profile.full_name ?? "faculty").replace(/\s+/g, "_")}.docx`;

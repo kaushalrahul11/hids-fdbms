@@ -41,6 +41,12 @@ export default async function FacultyDetailPage({ params }: { params: { id: stri
     supabase.from("faculty_documents").select("*").eq("faculty_id", params.id),
   ]);
 
+  const { data: promotionHistory } = await supabase
+    .from("promotion_history")
+    .select("*")
+    .eq("faculty_id", params.id)
+    .order("promotion_date", { ascending: false });
+
   return (
     <FacultyEditForm
       facultyId={params.id}
@@ -55,6 +61,7 @@ export default async function FacultyDetailPage({ params }: { params: { id: stri
       councils={(councils ?? []).map((c) => c.name)}
       publications={publications ?? []}
       documents={documents ?? []}
+      promotionHistory={promotionHistory ?? []}
     />
   );
 }

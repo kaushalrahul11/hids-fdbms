@@ -1,28 +1,19 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PrintButton from "./print-button";
-
-function yearsBetween(from: string, to: string | null) {
-  const start = new Date(from);
-  const end = to ? new Date(to) : new Date();
-  return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-}
-function formatYears(years: number) {
-  const y = Math.floor(years);
-  const m = Math.round((years - y) * 12);
-  if (m === 12) return `${y + 1} years`;
-  return m > 0 ? `${y} years ${m} months` : `${y} years`;
-}
+import { buildDesignationBreakdown, type HistoryRow } from "@/lib/experience";
+import { yearsBetween, formatYears } from "@/lib/date-format";
 
 export default async function AdminFacultyProfilePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
 
-  const [{ data: profile }, { data: history }, { data: qualifications }, { data: deptRow }, { data: photoDoc }] = await Promise.all([
+  const [{ data: profile }, { data: history }, { data: qualifications }, { data: deptRow }, { data: photoDoc }, { data: promotions }] = await Promise.all([
     supabase.from("faculty_profile").select("*").eq("id", params.id).single(),
     supabase.from("faculty_employment_history").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_qualifications").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_profile").select("department_id, departments(name)").eq("id", params.id).single(),
     supabase.from("faculty_documents").select("file_path").eq("faculty_id", params.id).eq("document_type", "Photograph").maybeSingle(),
+    supabase.from("promotion_history").select("promotion_date").eq("faculty_id", params.id).order("promotion_date", { ascending: false }).limit(1),
   ]);
 
   if (!profile) notFound();
@@ -33,9 +24,13 @@ export default async function AdminFacultyProfilePage({ params }: { params: { id
     photoUrl = data?.signedUrl ?? null;
   }
 
-  const priorYears = (history ?? []).reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
-  const hidsYears = profile.doj_hids ? yearsBetween(profile.doj_hids, null) : 0;
-  const totalYears = priorYears + hidsYears;
+  const currentSegmentStart = promotions?.[0]?.promotion_date ?? profile.doj_hids;
+  const { buckets, totalYears } = buildDesignationBreakdown(
+    (history ?? []) as HistoryRow[],
+    profile.present_designation,
+    currentSegmentStart,
+    profile.relieving_date ?? null
+  );
   const departmentName = (deptRow as any)?.departments?.name ?? "—";
 
   return (
@@ -59,6 +54,11 @@ export default async function AdminFacultyProfilePage({ params }: { params: { id
       <div className="rounded-lg border border-teal-200 bg-teal-100 p-4 mb-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Total Experience</p>
         <p className="mt-1 font-display text-xl font-semibold text-navy-900">{formatYears(totalYears)}</p>
+        <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-navy-900/70">
+          {buckets.filter((b) => b.totalYears > 0).map((b) => (
+            <span key={b.label}>{b.label}: {formatYears(b.totalYears)}</span>
+          ))}
+        </div>
       </div>
 
       <Section title="Identity">

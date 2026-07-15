@@ -53,6 +53,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     toDesignation: promotion.to_designation,
     department: departmentName,
     promotionDate: promotion.promotion_date,
+    refNo: promotion.letter_no || undefined,
   });
 
   const fileName = `Promotion_Letter_${profile.full_name.replace(/\s+/g, "_")}.docx`;
