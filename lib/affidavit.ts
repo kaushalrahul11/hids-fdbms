@@ -2,8 +2,8 @@ import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   WidthType, AlignmentType, HeadingLevel, BorderStyle, PageBreak, ImageRun,
 } from "docx";
-import { buildDesignationBreakdown, type HistoryRow } from "./experience";
-import { formatDotDate } from "./date-format";
+import { buildExperienceTimeline } from "./experience";
+import { formatDotDate, formatExactDuration } from "./date-format";
 
 function cell(text: string, opts: { bold?: boolean; width?: number } = {}) {
   return new TableCell({
@@ -51,8 +51,8 @@ export async function generateAffidavitDocx(data: {
     currentSegmentStart, salaryRecords = [],
   } = data;
 
-  const { buckets } = buildDesignationBreakdown(
-    (history ?? []) as HistoryRow[],
+  const { entries, totalYears: totalExperienceYears } = buildExperienceTimeline(
+    (history ?? []) as any,
     profile.present_designation,
     currentSegmentStart ?? profile.doj_hids,
     profile.relieving_date ?? null
@@ -75,17 +75,28 @@ export async function generateAffidavitDocx(data: {
     qualRows.push(new TableRow({ children: ["", "", "", "", "", "", ""].map((t) => cell(t)) }));
   }
 
-  const experienceRows = buckets.map(({ label, institutions, totalYears }) => {
-    return new TableRow({
+  const experienceRows = entries.length > 0
+    ? entries.map((e) =>
+        new TableRow({
+          children: [
+            cell(e.position),
+            cell(e.institution_name),
+            cell(formatDotDate(e.from_date)),
+            cell(e.to_date ? formatDotDate(e.to_date) : "Till date"),
+            cell(formatExactDuration(e.from_date, e.to_date)),
+          ],
+        })
+      )
+    : [new TableRow({ children: ["", "", "", "", ""].map((t) => cell(t)) })];
+  experienceRows.push(
+    new TableRow({
       children: [
-        cell(label),
-        cell(institutions.join("\n") || "—"),
-        cell(""),
-        cell(""),
-        cell(totalYears > 0 ? `${totalYears.toFixed(1)}y` : "N/A"),
+        cell(""), cell(""), cell(""),
+        cell("Total Experience", { bold: true }),
+        cell(`${totalExperienceYears.toFixed(1)} years (approx.)`, { bold: true }),
       ],
-    });
-  });
+    })
+  );
 
   // Last 6 calendar months of salary
   const now = new Date();
@@ -209,7 +220,7 @@ export async function generateAffidavitDocx(data: {
           new Table({
             borders: tableBorders,
             width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [headerRow(["Position", "Name of Institution / From / To", "", "", "Total Experience"]), ...experienceRows],
+            rows: [headerRow(["Position", "Name of Institution", "From", "To", "Duration"]), ...experienceRows],
           }),
           p("", { spacing: 120 }),
 

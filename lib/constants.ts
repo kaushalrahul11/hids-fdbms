@@ -83,7 +83,7 @@ export const FACULTY_EDITABLE_FIELDS = [
   "present_address_line1", "present_address_line2", "present_state", "present_district", "present_pincode",
   "permanent_address_line1", "permanent_address_line2", "permanent_state", "permanent_district", "permanent_pincode",
   "mobile_no", "pan_no", "aadhaar_no",
-  "department_id", "present_designation", "doj_hids", "present_appt_order_no", "present_appt_order_date",
+  "department_id", "doj_hids", "present_appt_order_no", "present_appt_order_date",
   "last_college_name", "last_college_designation", "last_college_relieving_date",
   "previous_appt_order_no", "previous_appt_order_date", "previous_relieving_order_no", "previous_relieving_order_date",
   "sdc_reg_no", "sdc_valid_upto", "dci_bio_reg_no", "state_dental_council",

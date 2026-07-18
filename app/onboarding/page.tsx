@@ -26,7 +26,7 @@ type QualificationRow = {
 };
 
 const STEPS = [
-  "Identity", "Contact & Address", "Qualifications", "Current Appointment",
+  "Identity", "Contact & Address", "Qualifications", "HIDS Appointment",
   "Previous College", "Council Registration", "Bank Details", "Employment History",
   "Documents", "Review & Submit",
 ];
@@ -489,7 +489,7 @@ function StepAppointment({
 }: { form: any; update: (f: any, v: string) => void; departments: Department[] }) {
   return (
     <div className="space-y-5">
-      <h2 className="font-display text-lg font-semibold text-navy-900">Current Appointment at HIDS</h2>
+      <h2 className="font-display text-lg font-semibold text-navy-900">HIDS College Appointment Details</h2>
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Department" required>
           <Select value={form.department_id} onChange={(e) => update("department_id", e.target.value)}>

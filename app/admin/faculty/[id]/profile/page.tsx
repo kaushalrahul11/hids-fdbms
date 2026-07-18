@@ -97,7 +97,7 @@ export default async function AdminFacultyProfilePage({ params }: { params: { id
         )}
       </Section>
 
-      <Section title="Current Appointment">
+      <Section title="HIDS College Appointment Details">
         <Row label="Department" value={departmentName} />
         <Row label="Designation" value={profile.present_designation} />
         <Row label="Date of joining HIDS" value={profile.doj_hids} />

@@ -9,7 +9,7 @@ import { SelectOrOther } from "@/components/select-or-other";
 import { DocumentsSection } from "@/components/documents-section";
 import {
   DESIGNATIONS, HISTORY_POSITIONS, GENDERS, SOCIAL_CATEGORIES, INDIAN_STATES,
-  QUALIFICATION_TYPES, STATUSES,
+  QUALIFICATION_TYPES, STATUSES, PUBLICATION_TYPES, AUTHOR_POSITIONS, PUBLICATION_CATEGORIES,
 } from "@/lib/constants";
 
 type EmploymentRow = { id?: string; position: string; institution_name: string; from_date: string; to_date: string };
@@ -137,6 +137,33 @@ export default function FacultyEditForm({
     await supabase.from("faculty_publications").update({
       status: "verified", verified_points: points, verified_by: userData.user?.id, verified_at: new Date().toISOString(),
     }).eq("id", pubId);
+    router.refresh();
+  }
+
+  const [editingPubId, setEditingPubId] = useState<string | null>(null);
+  const [pubForm, setPubForm] = useState<Record<string, any>>({});
+
+  function startEditPublication(pub: any) {
+    setEditingPubId(pub.id);
+    setPubForm({
+      title: pub.title ?? "", journal_name: pub.journal_name ?? "", publication_year: pub.publication_year ?? "",
+      publication_type: pub.publication_type ?? "", author_position: pub.author_position ?? "", category: pub.category ?? "",
+      self_assigned_points: pub.self_assigned_points ?? "", verified_points: pub.verified_points ?? "", status: pub.status,
+    });
+  }
+
+  async function saveEditPublication(pubId: string) {
+    const payload = {
+      title: pubForm.title, journal_name: pubForm.journal_name || null,
+      publication_year: pubForm.publication_year ? Number(pubForm.publication_year) : null,
+      publication_type: pubForm.publication_type || null, author_position: pubForm.author_position || null,
+      category: pubForm.category || null,
+      self_assigned_points: pubForm.self_assigned_points ? Number(pubForm.self_assigned_points) : 0,
+      verified_points: pubForm.verified_points !== "" ? Number(pubForm.verified_points) : null,
+      status: pubForm.status,
+    };
+    await supabase.from("faculty_publications").update(payload).eq("id", pubId);
+    setEditingPubId(null);
     router.refresh();
   }
 
@@ -510,7 +537,7 @@ export default function FacultyEditForm({
           <button type="button" onClick={addQual} className="text-sm font-medium text-teal-600 hover:text-teal-700">+ Add qualification</button>
         </Section>
 
-        <Section title="Current Appointment">
+        <Section title="HIDS College Appointment Details">
           <TwoCol>
             <Field label="Department">
               <Select value={form.department_id ?? ""} onChange={(e) => update("department_id", e.target.value)}>
@@ -518,11 +545,8 @@ export default function FacultyEditForm({
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </Select>
             </Field>
-            <Field label="Present designation">
-              <Select value={form.present_designation ?? ""} onChange={(e) => update("present_designation", e.target.value)}>
-                <option value="">Select</option>
-                {DESIGNATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </Select>
+            <Field label="Present designation" hint="Change via Promotion above only">
+              <TextInput value={form.present_designation ?? ""} disabled />
             </Field>
           </TwoCol>
           <TwoCol>
@@ -593,22 +617,77 @@ export default function FacultyEditForm({
           ) : (
             <div className="space-y-3">
               {publications.map((pub) => (
-                <div key={pub.id} className="flex flex-col gap-2 rounded-md border border-slate-200 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-ink">{pub.title}</p>
-                    <p className="text-xs text-muted">
-                      {pub.journal_name} · {pub.publication_year} · {pub.publication_type} · {pub.author_position} · {pub.category ?? "No category"}
-                      <br />Self-assigned: {pub.self_assigned_points} pts
-                      {pub.status === "verified" && ` · Verified: ${pub.verified_points} pts`}
-                      {pub.file_name && ` · 📎 ${pub.file_name}`}
-                    </p>
-                  </div>
-                  {pub.status === "pending" ? (
-                    <button type="button" onClick={() => verifyPublication(pub.id, pub.self_assigned_points)} className="shrink-0 rounded-md bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-600">
-                      Verify
-                    </button>
+                <div key={pub.id} className="rounded-md border border-slate-200 p-3">
+                  {editingPubId === pub.id ? (
+                    <div className="space-y-3">
+                      <Field label="Title"><TextInput value={pubForm.title} onChange={(e) => setPubForm((f: any) => ({ ...f, title: e.target.value }))} /></Field>
+                      <TwoCol>
+                        <Field label="Journal name"><TextInput value={pubForm.journal_name} onChange={(e) => setPubForm((f: any) => ({ ...f, journal_name: e.target.value }))} /></Field>
+                        <Field label="Year"><TextInput value={pubForm.publication_year} onChange={(e) => setPubForm((f: any) => ({ ...f, publication_year: e.target.value.replace(/\D/g, "") }))} /></Field>
+                      </TwoCol>
+                      <TwoCol>
+                        <Field label="Type">
+                          <Select value={pubForm.publication_type} onChange={(e) => setPubForm((f: any) => ({ ...f, publication_type: e.target.value }))}>
+                            <option value="">Select</option>
+                            {PUBLICATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="Author position">
+                          <Select value={pubForm.author_position} onChange={(e) => setPubForm((f: any) => ({ ...f, author_position: e.target.value }))}>
+                            <option value="">Select</option>
+                            {AUTHOR_POSITIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+                          </Select>
+                        </Field>
+                      </TwoCol>
+                      <TwoCol>
+                        <Field label="Category">
+                          <Select value={pubForm.category} onChange={(e) => setPubForm((f: any) => ({ ...f, category: e.target.value }))}>
+                            <option value="">Select</option>
+                            {PUBLICATION_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </Select>
+                        </Field>
+                        <Field label="Status">
+                          <Select value={pubForm.status} onChange={(e) => setPubForm((f: any) => ({ ...f, status: e.target.value }))}>
+                            <option value="pending">Pending</option>
+                            <option value="verified">Verified</option>
+                            <option value="rejected">Rejected</option>
+                          </Select>
+                        </Field>
+                      </TwoCol>
+                      <TwoCol>
+                        <Field label="Self-assigned points"><TextInput value={pubForm.self_assigned_points} onChange={(e) => setPubForm((f: any) => ({ ...f, self_assigned_points: e.target.value.replace(/[^0-9.]/g, "") }))} /></Field>
+                        <Field label="Verified points"><TextInput value={pubForm.verified_points} onChange={(e) => setPubForm((f: any) => ({ ...f, verified_points: e.target.value.replace(/[^0-9.]/g, "") }))} /></Field>
+                      </TwoCol>
+                      <div className="flex gap-2">
+                        <SecondaryButton type="button" onClick={() => setEditingPubId(null)}>Cancel</SecondaryButton>
+                        <PrimaryButton type="button" onClick={() => saveEditPublication(pub.id)}>Save</PrimaryButton>
+                      </div>
+                    </div>
                   ) : (
-                    <span className="shrink-0 rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-700">Verified</span>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-ink">{pub.title}</p>
+                        <p className="text-xs text-muted">
+                          {pub.journal_name} · {pub.publication_year} · {pub.publication_type} · {pub.author_position} · {pub.category ?? "No category"}
+                          <br />Self-assigned: {pub.self_assigned_points} pts
+                          {pub.status === "verified" && ` · Verified: ${pub.verified_points} pts`}
+                          {pub.file_name && ` · 📎 ${pub.file_name}`}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {pub.status === "pending" && (
+                          <button type="button" onClick={() => verifyPublication(pub.id, pub.self_assigned_points)} className="rounded-md bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-600">
+                            Verify
+                          </button>
+                        )}
+                        {pub.status === "verified" && (
+                          <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-medium text-teal-700">Verified</span>
+                        )}
+                        <button type="button" onClick={() => startEditPublication(pub)} className="text-xs font-medium text-teal-600 hover:text-teal-700">
+                          Edit
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}

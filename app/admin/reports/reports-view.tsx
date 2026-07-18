@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { SecondaryButton } from "@/components/form-controls";
-import { yearsBetween, formatYears } from "@/lib/date-format";
+import { formatYears, formatExactDuration } from "@/lib/date-format";
+import { buildDesignationBreakdown, type HistoryRow } from "@/lib/experience";
 
 type HistoryEntry = { position: string; institution_name: string; from_date: string; to_date: string | null };
 
@@ -26,6 +27,7 @@ type Row = {
   qualifications: string;
   employment_history: string;
   historyRaw: HistoryEntry[];
+  currentSegmentStart: string | null;
   relieving_date: string | null;
 };
 
@@ -66,28 +68,36 @@ function downloadFullList(rows: Row[]) {
 
 function downloadExperienceReport(rows: Row[]) {
   const headers = [
-    "Name", "Department", "Designation", "HIDS Duration (till date)",
-    "Previous Institutions & Durations", "Total Experience (till date)",
+    "Name", "Department", "Designation", "Current HIDS Designation Duration",
+    "All Prior Positions & Durations (other colleges + earlier HIDS designations)", "Total Experience (till date)",
   ];
   const rowsOut = rows.map((r) => {
-    const hidsYears = r.doj_hids ? yearsBetween(r.doj_hids, r.relieving_date) : 0;
-    const priorYears = r.historyRaw.reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
-    const previousText = r.historyRaw
-      .map((h) => `${h.institution_name} (${h.position}, ${h.from_date} to ${h.to_date ?? "present"}, ${formatYears(yearsBetween(h.from_date, h.to_date))})`)
-      .join(" | ");
+    const { buckets, totalYears } = buildDesignationBreakdown(
+      r.historyRaw as HistoryRow[],
+      r.present_designation,
+      r.currentSegmentStart,
+      r.relieving_date
+    );
+    const hidsDuration = r.currentSegmentStart
+      ? formatExactDuration(r.currentSegmentStart, r.relieving_date)
+      : "—";
+    const previousText = buckets
+      .flatMap((b) => b.institutions)
+      .join(" | ") || "None on record";
     return [
       r.full_name, r.department_name, r.present_designation,
-      r.doj_hids ? formatYears(hidsYears) : "—",
-      previousText || "None on record",
-      formatYears(hidsYears + priorYears),
+      hidsDuration,
+      previousText,
+      formatYears(totalYears),
     ];
   });
   download(`hids-faculty-experience-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(headers, rowsOut));
 }
 
 export default function ReportsView({ rows }: { rows: Row[] }) {
-  const byDepartment = useMemo(() => groupCount(rows, (r) => r.department_name), [rows]);
-  const byDesignation = useMemo(() => groupCount(rows, (r) => r.present_designation), [rows]);
+  const activeRows = useMemo(() => rows.filter((r) => r.status !== "resigned" && r.status !== "relieved"), [rows]);
+  const byDepartment = useMemo(() => groupCount(activeRows, (r) => r.department_name), [activeRows]);
+  const byDesignation = useMemo(() => groupCount(activeRows, (r) => r.present_designation), [activeRows]);
   const byStatus = useMemo(() => groupCount(rows, (r) => r.status), [rows]);
 
   const expiringSoon = useMemo(
@@ -103,7 +113,7 @@ export default function ReportsView({ rows }: { rows: Row[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold text-navy-900">Reports</h1>
-          <p className="mt-1 text-sm text-muted">{rows.length} faculty on record</p>
+          <p className="mt-1 text-sm text-muted">{activeRows.length} active faculty ({rows.length} total on record, including resigned/relieved)</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <SecondaryButton type="button" onClick={() => downloadFullList(rows)}>

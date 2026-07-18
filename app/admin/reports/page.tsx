@@ -13,6 +13,7 @@ export default async function ReportsPage() {
 
   const { data: allQualifications } = await supabase.from("faculty_qualifications").select("*");
   const { data: allHistory } = await supabase.from("faculty_employment_history").select("*").order("sort_order");
+  const { data: allPromotions } = await supabase.from("promotion_history").select("*").order("promotion_date");
 
   const qualByFaculty = new Map<string, any[]>();
   (allQualifications ?? []).forEach((q) => {
@@ -23,6 +24,10 @@ export default async function ReportsPage() {
   (allHistory ?? []).forEach((h) => {
     if (!historyByFaculty.has(h.faculty_id)) historyByFaculty.set(h.faculty_id, []);
     historyByFaculty.get(h.faculty_id)!.push(h);
+  });
+  const latestPromotionByFaculty = new Map<string, string>();
+  (allPromotions ?? []).forEach((p) => {
+    latestPromotionByFaculty.set(p.faculty_id, p.promotion_date); // last write wins since ordered ascending
   });
 
   const rows = (faculty ?? []).map((f: any) => ({
@@ -51,6 +56,7 @@ export default async function ReportsPage() {
     historyRaw: (historyByFaculty.get(f.id) ?? []).map((h) => ({
       position: h.position, institution_name: h.institution_name, from_date: h.from_date, to_date: h.to_date,
     })),
+    currentSegmentStart: latestPromotionByFaculty.get(f.id) ?? f.doj_hids,
     relieving_date: f.relieving_date,
   }));
 

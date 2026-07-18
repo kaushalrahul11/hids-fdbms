@@ -7,7 +7,7 @@ import { Field, TextInput, Select, PrimaryButton, SecondaryButton } from "@/comp
 import { yearsBetween, formatYears } from "@/lib/date-format";
 import {
   GENDERS, SOCIAL_CATEGORIES, INDIAN_STATES, FACULTY_EDITABLE_FIELDS, FIELD_LABELS,
-  DESIGNATIONS, HISTORY_POSITIONS, QUALIFICATION_TYPES,
+  HISTORY_POSITIONS, QUALIFICATION_TYPES,
 } from "@/lib/constants";
 import { buildDesignationBreakdown, type HistoryRow } from "@/lib/experience";
 import { SelectOrOther } from "@/components/select-or-other";
@@ -275,7 +275,7 @@ export default function ProfileView({
             <button type="button" onClick={addQual} className="text-sm font-medium text-teal-600 hover:text-teal-700">+ Add qualification</button>
           </Section>
 
-          <Section title="Current Appointment">
+          <Section title="HIDS College Appointment Details">
             <TwoCol>
               <Field label="Department">
                 <Select value={form.department_id ?? ""} onChange={(e) => update("department_id", e.target.value)}>
@@ -283,11 +283,8 @@ export default function ProfileView({
                   {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </Select>
               </Field>
-              <Field label="Present designation">
-                <Select value={form.present_designation ?? ""} onChange={(e) => update("present_designation", e.target.value)}>
-                  <option value="">Select</option>
-                  {DESIGNATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-                </Select>
+              <Field label="Present designation" hint="Only admin can change this, via promotion">
+                <TextInput value={form.present_designation ?? ""} disabled />
               </Field>
             </TwoCol>
             <TwoCol>
@@ -295,7 +292,6 @@ export default function ProfileView({
               <Field label="Appt. order no."><TextInput value={form.present_appt_order_no ?? ""} onChange={(e) => update("present_appt_order_no", e.target.value)} /></Field>
             </TwoCol>
             <Field label="Order date"><TextInput type="date" value={form.present_appt_order_date ?? ""} onChange={(e) => update("present_appt_order_date", e.target.value)} /></Field>
-            <p className="text-xs text-muted">Changing designation here goes through admin approval — it won't auto-trigger the promotion workflow.</p>
           </Section>
 
           <Section title="Previous College">
@@ -419,7 +415,7 @@ export default function ProfileView({
             )}
           </Section>
 
-          <Section title="Current Appointment">
+          <Section title="HIDS College Appointment Details">
             <Row label="Department" value={departmentName} />
             <Row label="Designation" value={profile.present_designation} />
             <Row label="Date of joining HIDS" value={profile.doj_hids} />
