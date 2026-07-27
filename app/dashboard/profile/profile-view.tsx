@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Field, TextInput, Select, PrimaryButton, SecondaryButton } from "@/components/form-controls";
-import { yearsBetween, formatYears } from "@/lib/date-format";
+import { formatYears, formatExactDuration } from "@/lib/date-format";
 import {
   GENDERS, SOCIAL_CATEGORIES, INDIAN_STATES, FACULTY_EDITABLE_FIELDS, FIELD_LABELS,
   HISTORY_POSITIONS, QUALIFICATION_TYPES,
@@ -85,14 +85,7 @@ export default function ProfileView({
   function addRow() { setManualRows((r) => [...r, { position: "", institution_name: "", from_date: "", to_date: "" }]); }
   function removeRow(i: number) { setManualRows((r) => r.filter((_, idx) => idx !== i)); }
 
-  const { buckets, totalYears } = buildDesignationBreakdown(
-    lockedHistory as HistoryRow[],
-    profile.present_designation,
-    lockedHistory.length > 0 ? lockedHistory[lockedHistory.length - 1].to_date : profile.doj_hids,
-    profile.relieving_date ?? null
-  );
-  const manualPriorYears = manualHistory.reduce((sum, h) => sum + yearsBetween(h.from_date, h.to_date), 0);
-  const grandTotalYears = totalYears + manualPriorYears;
+  const { buckets, totalYears: grandTotalYears } = buildDesignationBreakdown(history as HistoryRow[]);
 
   async function handleSubmitRequest() {
     setSubmitting(true);
@@ -201,7 +194,6 @@ export default function ProfileView({
           {buckets.filter((b) => b.totalYears > 0).map((b) => (
             <span key={b.label}>{b.label}: {formatYears(b.totalYears)}</span>
           ))}
-          {manualPriorYears > 0 && <span>Previous colleges: {formatYears(manualPriorYears)}</span>}
         </div>
       </div>
 
@@ -433,7 +425,7 @@ export default function ProfileView({
                       {h.position} — {h.institution_name}
                       {h.source === "promotion" && <span className="ml-2 text-xs text-teal-600">(HIDS record)</span>}
                     </p>
-                    <p className="text-muted">{h.from_date} to {h.to_date ?? "present"} ({formatYears(yearsBetween(h.from_date, h.to_date))})</p>
+                    <p className="text-muted">{h.from_date} to {h.to_date ?? "present"} ({formatExactDuration(h.from_date, h.to_date)})</p>
                   </div>
                 ))}
               </div>

@@ -2,18 +2,17 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PrintButton from "./print-button";
 import { buildDesignationBreakdown, type HistoryRow } from "@/lib/experience";
-import { yearsBetween, formatYears } from "@/lib/date-format";
+import { formatYears, formatExactDuration } from "@/lib/date-format";
 
 export default async function AdminFacultyProfilePage({ params }: { params: { id: string } }) {
   const supabase = createClient();
 
-  const [{ data: profile }, { data: history }, { data: qualifications }, { data: deptRow }, { data: photoDoc }, { data: promotions }] = await Promise.all([
+  const [{ data: profile }, { data: history }, { data: qualifications }, { data: deptRow }, { data: photoDoc }] = await Promise.all([
     supabase.from("faculty_profile").select("*").eq("id", params.id).single(),
     supabase.from("faculty_employment_history").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_qualifications").select("*").eq("faculty_id", params.id).order("sort_order"),
     supabase.from("faculty_profile").select("department_id, departments(name)").eq("id", params.id).single(),
     supabase.from("faculty_documents").select("file_path").eq("faculty_id", params.id).eq("document_type", "Photograph").maybeSingle(),
-    supabase.from("promotion_history").select("promotion_date").eq("faculty_id", params.id).order("promotion_date", { ascending: false }).limit(1),
   ]);
 
   if (!profile) notFound();
@@ -24,13 +23,7 @@ export default async function AdminFacultyProfilePage({ params }: { params: { id
     photoUrl = data?.signedUrl ?? null;
   }
 
-  const currentSegmentStart = promotions?.[0]?.promotion_date ?? profile.doj_hids;
-  const { buckets, totalYears } = buildDesignationBreakdown(
-    (history ?? []) as HistoryRow[],
-    profile.present_designation,
-    currentSegmentStart,
-    profile.relieving_date ?? null
-  );
+  const { buckets, totalYears } = buildDesignationBreakdown((history ?? []) as HistoryRow[]);
   const departmentName = (deptRow as any)?.departments?.name ?? "—";
 
   return (
@@ -112,7 +105,7 @@ export default async function AdminFacultyProfilePage({ params }: { params: { id
             {history!.map((h) => (
               <div key={h.id} className="text-sm">
                 <span className="font-medium text-ink">{h.position} — {h.institution_name}</span>
-                <span className="text-muted"> · {h.from_date} to {h.to_date ?? "present"} ({formatYears(yearsBetween(h.from_date, h.to_date))})</span>
+                <span className="text-muted"> · {h.from_date} to {h.to_date ?? "present"} ({formatExactDuration(h.from_date, h.to_date)})</span>
               </div>
             ))}
           </div>

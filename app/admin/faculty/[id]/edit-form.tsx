@@ -10,9 +10,11 @@ import { DocumentsSection } from "@/components/documents-section";
 import {
   DESIGNATIONS, HISTORY_POSITIONS, GENDERS, SOCIAL_CATEGORIES, INDIAN_STATES,
   QUALIFICATION_TYPES, STATUSES, PUBLICATION_TYPES, AUTHOR_POSITIONS, PUBLICATION_CATEGORIES,
+  HIDS_INSTITUTION_NAME,
 } from "@/lib/constants";
+import { buildDesignationBreakdown } from "@/lib/experience";
 
-type EmploymentRow = { id?: string; position: string; institution_name: string; from_date: string; to_date: string };
+type EmploymentRow = { id?: string; position: string; institution_name: string; from_date: string; to_date: string; source?: string };
 type QualificationRow = {
   id?: string; degree_type: string; degree_name: string; college_name: string;
   university_name: string; year_month_passing: string; speciality: string;
@@ -33,12 +35,6 @@ const PROFILE_FIELDS = [
 const emptyQualification: QualificationRow = {
   degree_type: "", degree_name: "", college_name: "", university_name: "", year_month_passing: "", speciality: "",
 };
-
-function yearsBetween(from: string, to: string | null) {
-  const start = new Date(from);
-  const end = to ? new Date(to) : new Date();
-  return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-}
 
 const PROMOTION_RULES: Record<string, { next: string; minYears: number; minPoints: number }> = {
   Lecturer: { next: "Reader", minYears: 4, minPoints: 20 },
@@ -70,7 +66,7 @@ export default function FacultyEditForm({
   const [status, setStatus] = useState(profile.status);
   const [rows, setRows] = useState<EmploymentRow[]>(
     history.length
-      ? history.map((h) => ({ id: h.id, position: h.position, institution_name: h.institution_name, from_date: h.from_date ?? "", to_date: h.to_date ?? "" }))
+      ? history.map((h) => ({ id: h.id, position: h.position, institution_name: h.institution_name, from_date: h.from_date ?? "", to_date: h.to_date ?? "", source: h.source }))
       : [{ position: "", institution_name: "", from_date: "", to_date: "" }]
   );
   const [quals, setQuals] = useState<QualificationRow[]>(
@@ -99,10 +95,10 @@ export default function FacultyEditForm({
   const [relievingReason, setRelievingReason] = useState(facultyProfile.relieving_reason ?? "");
   const [relieving, setRelieving] = useState(false);
 
-  const currentSegmentStart = promotionHistory[0]?.promotion_date ?? form.doj_hids;
-  const priorYears = rows.reduce((sum, r) => (r.from_date ? sum + yearsBetween(r.from_date, r.to_date || null) : sum), 0);
-  const hidsYears = currentSegmentStart ? yearsBetween(currentSegmentStart, null) : 0;
-  const totalYears = priorYears + hidsYears;
+  const historyForCalc = rows
+    .filter((r) => r.position && r.institution_name && r.from_date)
+    .map((r) => ({ position: r.position, institution_name: r.institution_name, from_date: r.from_date, to_date: r.to_date || null }));
+  const totalYears = buildDesignationBreakdown(historyForCalc).totalYears;
   const verifiedPoints = publications.filter((p) => p.status === "verified").reduce((s, p) => s + (p.verified_points ?? 0), 0);
 
   const currentDesignation = form.present_designation;
@@ -177,21 +173,36 @@ export default function FacultyEditForm({
     const { data: userData } = await supabase.auth.getUser();
     const adminId = userData.user?.id;
 
-    // The segment just closed out started either at their last promotion
-    // (if any) or their original date of joining HIDS.
-    const segmentStart = currentSegmentStart;
+    // Find the existing open HIDS row (to_date = null) representing the
+    // current designation, and close it out at the promotion date. If one
+    // somehow doesn't exist yet, fall back to creating a closed segment
+    // from their last promotion date (or DOJ).
+    const openRow = rows.find((r) => r.institution_name === HIDS_INSTITUTION_NAME && !r.to_date && r.id);
+    let updatedRows = rows;
 
-    if (segmentStart) {
-      await supabase.from("faculty_employment_history").insert({
-        faculty_id: facultyId,
-        position: currentDesignation,
-        institution_name: "Himachal Institute of Dental Sciences",
-        from_date: segmentStart,
-        to_date: promotionDate,
-        source: "promotion",
-        sort_order: rows.length,
-      });
+    if (openRow?.id) {
+      await supabase.from("faculty_employment_history").update({ to_date: promotionDate }).eq("id", openRow.id);
+      updatedRows = updatedRows.map((r) => (r.id === openRow.id ? { ...r, to_date: promotionDate } : r));
+    } else {
+      const fallbackStart = promotionHistory[0]?.promotion_date ?? form.doj_hids;
+      if (fallbackStart) {
+        await supabase.from("faculty_employment_history").insert({
+          faculty_id: facultyId, position: currentDesignation, institution_name: HIDS_INSTITUTION_NAME,
+          from_date: fallbackStart, to_date: promotionDate, source: "promotion", sort_order: rows.length,
+        });
+        updatedRows = [...updatedRows, { position: currentDesignation, institution_name: HIDS_INSTITUTION_NAME, from_date: fallbackStart, to_date: promotionDate, source: "promotion" }];
+      }
     }
+
+    // Open a new row for the new designation
+    const { data: newRow } = await supabase.from("faculty_employment_history").insert({
+      faculty_id: facultyId, position: promoteTarget, institution_name: HIDS_INSTITUTION_NAME,
+      from_date: promotionDate, to_date: null, source: "promotion", sort_order: rows.length + 1,
+    }).select().single();
+    if (newRow) {
+      updatedRows = [...updatedRows, { id: newRow.id, position: newRow.position, institution_name: newRow.institution_name, from_date: newRow.from_date, to_date: "", source: newRow.source }];
+    }
+    setRows(updatedRows);
 
     await supabase.from("promotion_history").insert({
       faculty_id: facultyId, from_designation: currentDesignation, to_designation: promoteTarget,
@@ -232,6 +243,14 @@ export default function FacultyEditForm({
       field_name: "status", old_value: status, new_value: "relieved", changed_by: adminId,
     });
 
+    // Close out the currently-open HIDS designation row so experience
+    // calculations stop counting time after the relieving date.
+    const openRow = rows.find((r) => r.institution_name === HIDS_INSTITUTION_NAME && !r.to_date && r.id);
+    if (openRow?.id) {
+      await supabase.from("faculty_employment_history").update({ to_date: relievingDate }).eq("id", openRow.id);
+      setRows((r) => r.map((row) => (row.id === openRow.id ? { ...row, to_date: relievingDate } : row)));
+    }
+
     setRelieving(false);
     setStatus("relieved");
     router.refresh();
@@ -245,6 +264,16 @@ export default function FacultyEditForm({
       table_name: "profiles", record_id: facultyId, faculty_id: facultyId,
       field_name: "status", old_value: status, new_value: "active", changed_by: userData.user?.id,
     });
+
+    // Reopen the HIDS row that was closed at relieving (if its end date
+    // matches the relieving date we just cleared), so experience keeps
+    // accruing again.
+    const closedRow = rows.find((r) => r.institution_name === HIDS_INSTITUTION_NAME && r.to_date === facultyProfile.relieving_date);
+    if (closedRow?.id) {
+      await supabase.from("faculty_employment_history").update({ to_date: null }).eq("id", closedRow.id);
+      setRows((r) => r.map((row) => (row.id === closedRow.id ? { ...row, to_date: "" } : row)));
+    }
+
     setStatus("active");
     router.refresh();
   }
@@ -301,7 +330,7 @@ export default function FacultyEditForm({
       await supabase.from("faculty_employment_history").insert(
         validRows.map((r, idx) => ({
           faculty_id: facultyId, position: r.position, institution_name: r.institution_name,
-          from_date: r.from_date, to_date: r.to_date || null, sort_order: idx,
+          from_date: r.from_date, to_date: r.to_date || null, source: r.source || "manual", sort_order: idx,
         }))
       );
     }

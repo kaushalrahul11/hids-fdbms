@@ -1,5 +1,4 @@
 import { yearsBetween, formatExactDuration } from "./date-format";
-import { HIDS_INSTITUTION_NAME } from "./constants";
 
 export type HistoryRow = { position: string; institution_name: string; from_date: string; to_date: string | null; source?: string };
 
@@ -18,16 +17,15 @@ function bucketFor(position: string) {
 }
 
 /**
- * Builds a designation-wise experience breakdown from employment history
- * (previous colleges + auto-recorded past HIDS designations) plus the
- * faculty's current, still-open HIDS designation.
+ * Builds a designation-wise experience breakdown purely from
+ * faculty_employment_history. Every faculty member should have one "open"
+ * row (to_date = null) representing their current, ongoing designation —
+ * previous colleges and past HIDS designations are all closed rows. This
+ * function does NOT do any separate "current segment" calculation; the open
+ * row already covers that. Summing every row exactly once is what avoids
+ * double-counting.
  */
-export function buildDesignationBreakdown(
-  history: HistoryRow[],
-  currentDesignation: string | null,
-  currentSegmentStart: string | null, // doj_hids, or the date of their most recent promotion
-  endDate: string | null // relieving_date, or null if still active (defaults to today)
-) {
+export function buildDesignationBreakdown(history: HistoryRow[]) {
   const buckets: Record<string, { institutions: string[]; totalYears: number }> = {};
   EXPERIENCE_BUCKETS.forEach((b) => (buckets[b.key] = { institutions: [], totalYears: 0 }));
 
@@ -37,13 +35,6 @@ export function buildDesignationBreakdown(
     buckets[bucket].institutions.push(`${h.institution_name} (${h.from_date} to ${h.to_date ?? "present"}, ${formatExactDuration(h.from_date, h.to_date)})`);
     buckets[bucket].totalYears += years;
   });
-
-  if (currentSegmentStart && currentDesignation) {
-    const bucket = bucketFor(currentDesignation);
-    const years = yearsBetween(currentSegmentStart, endDate);
-    buckets[bucket].institutions.push(`${HIDS_INSTITUTION_NAME} (${currentSegmentStart} to ${endDate ?? "present"}, ${formatExactDuration(currentSegmentStart, endDate)})`);
-    buckets[bucket].totalYears += years;
-  }
 
   const totalYears = Object.values(buckets).reduce((sum, b) => sum + b.totalYears, 0);
 
@@ -55,27 +46,15 @@ export function buildDesignationBreakdown(
 
 /**
  * Flat, chronologically-sorted list of every institution/position segment
- * (previous colleges + auto-recorded HIDS designations + the current open
- * segment), each with an exact from/to/duration — used for the affidavit's
- * "Name of Institution / From / To" experience table.
+ * (previous colleges + auto-recorded HIDS designations, including the
+ * still-open current one), each with an exact from/to/duration — used for
+ * the affidavit's "Name of Institution / From / To" experience table and
+ * the experience certificate.
  */
-export function buildExperienceTimeline(
-  history: HistoryRow[],
-  currentDesignation: string | null,
-  currentSegmentStart: string | null,
-  endDate: string | null
-) {
-  const entries: { position: string; institution_name: string; from_date: string; to_date: string | null }[] =
-    history.map((h) => ({ position: h.position, institution_name: h.institution_name, from_date: h.from_date, to_date: h.to_date }));
-
-  if (currentSegmentStart && currentDesignation) {
-    entries.push({
-      position: currentDesignation, institution_name: HIDS_INSTITUTION_NAME,
-      from_date: currentSegmentStart, to_date: endDate,
-    });
-  }
-
-  entries.sort((a, b) => new Date(a.from_date).getTime() - new Date(b.from_date).getTime());
+export function buildExperienceTimeline(history: HistoryRow[]) {
+  const entries = history
+    .map((h) => ({ position: h.position, institution_name: h.institution_name, from_date: h.from_date, to_date: h.to_date }))
+    .sort((a, b) => new Date(a.from_date).getTime() - new Date(b.from_date).getTime());
 
   const totalYears = entries.reduce((sum, e) => sum + yearsBetween(e.from_date, e.to_date), 0);
 

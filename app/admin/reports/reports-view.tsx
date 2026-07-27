@@ -27,7 +27,6 @@ type Row = {
   qualifications: string;
   employment_history: string;
   historyRaw: HistoryEntry[];
-  currentSegmentStart: string | null;
   relieving_date: string | null;
 };
 
@@ -72,15 +71,9 @@ function downloadExperienceReport(rows: Row[]) {
     "All Prior Positions & Durations (other colleges + earlier HIDS designations)", "Total Experience (till date)",
   ];
   const rowsOut = rows.map((r) => {
-    const { buckets, totalYears } = buildDesignationBreakdown(
-      r.historyRaw as HistoryRow[],
-      r.present_designation,
-      r.currentSegmentStart,
-      r.relieving_date
-    );
-    const hidsDuration = r.currentSegmentStart
-      ? formatExactDuration(r.currentSegmentStart, r.relieving_date)
-      : "—";
+    const { buckets, totalYears } = buildDesignationBreakdown(r.historyRaw as HistoryRow[]);
+    const openRow = r.historyRaw.find((h) => !h.to_date);
+    const hidsDuration = openRow ? formatExactDuration(openRow.from_date, null) : "—";
     const previousText = buckets
       .flatMap((b) => b.institutions)
       .join(" | ") || "None on record";

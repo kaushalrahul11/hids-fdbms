@@ -204,6 +204,21 @@ export default function OnboardingPage() {
       }
     }
 
+    // Seed the initial "open" HIDS designation row (to_date = null means
+    // still ongoing) so total experience can be calculated purely from
+    // this table going forward — no separate current-segment calculation.
+    if (form.doj_hids && form.present_designation) {
+      const { error: openRowError } = await supabase.from("faculty_employment_history").insert({
+        faculty_id: userId, position: form.present_designation, institution_name: "Himachal Institute of Dental Sciences",
+        from_date: form.doj_hids, to_date: null, source: "promotion", sort_order: validHistory.length,
+      });
+      if (openRowError) {
+        setError(`Profile saved, but couldn't record your current appointment: ${openRowError.message}`);
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const { error: completeError } = await supabase.rpc("complete_own_onboarding");
 
     setSubmitting(false);

@@ -43,20 +43,15 @@ export async function generateAffidavitDocx(data: {
   publications: any[];
   photoBuffer?: Buffer | null;
   photoType?: "jpg" | "png" | "gif" | "bmp";
-  currentSegmentStart?: string | null;
+  currentSegmentStart?: string | null; // deprecated, no longer used
   salaryRecords?: { month: string; salary_amount: number | null; tds_amount: number | null }[];
 }) {
   const {
     profile, qualifications, history, publications, photoBuffer, photoType = "jpg",
-    currentSegmentStart, salaryRecords = [],
+    salaryRecords = [],
   } = data;
 
-  const { entries, totalYears: totalExperienceYears } = buildExperienceTimeline(
-    (history ?? []) as any,
-    profile.present_designation,
-    currentSegmentStart ?? profile.doj_hids,
-    profile.relieving_date ?? null
-  );
+  const { entries, totalYears: totalExperienceYears } = buildExperienceTimeline((history ?? []) as any);
 
   const qualRows = (qualifications ?? []).map((q: any) =>
     new TableRow({
