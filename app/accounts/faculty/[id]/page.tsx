@@ -7,7 +7,7 @@ export default async function AccountsFacultyDetailPage({ params }: { params: { 
 
   const { data: faculty } = await supabase
     .from("faculty_profile")
-    .select("id, full_name, doj_hids, present_designation, departments(name), bank_name, bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_branch_name")
+    .select("id, full_name, doj_hids, present_designation, departments(name), bank_name, bank_account_holder_name, bank_account_number, bank_ifsc_code, bank_branch_name, pan_no")
     .eq("id", params.id)
     .single();
 
@@ -18,6 +18,13 @@ export default async function AccountsFacultyDetailPage({ params }: { params: { 
     .select("*")
     .eq("faculty_id", params.id)
     .order("month", { ascending: false });
+
+  const { data: panDoc } = await supabase
+    .from("faculty_documents")
+    .select("file_path, file_name")
+    .eq("faculty_id", params.id)
+    .eq("document_type", "PAN Card Copy")
+    .maybeSingle();
 
   return (
     <SalaryLedger
@@ -33,6 +40,8 @@ export default async function AccountsFacultyDetailPage({ params }: { params: { 
         bank_ifsc_code: faculty.bank_ifsc_code,
         bank_branch_name: faculty.bank_branch_name,
       }}
+      panNo={faculty.pan_no}
+      panDocument={panDoc}
     />
   );
 }

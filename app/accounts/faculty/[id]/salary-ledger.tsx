@@ -16,7 +16,7 @@ type BankDetails = {
 };
 
 export default function SalaryLedger({
-  facultyId, facultyName, departmentName, designation, records, bankDetails,
+  facultyId, facultyName, departmentName, designation, records, bankDetails, panNo, panDocument,
 }: {
   facultyId: string;
   facultyName: string;
@@ -24,6 +24,8 @@ export default function SalaryLedger({
   designation: string;
   records: Record[];
   bankDetails: BankDetails;
+  panNo: string | null;
+  panDocument: { file_path: string; file_name: string } | null;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -33,6 +35,16 @@ export default function SalaryLedger({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [openingPan, setOpeningPan] = useState(false);
+
+  async function handleViewPan() {
+    if (!panDocument) return;
+    setOpeningPan(true);
+    const { data } = await supabase.storage.from("faculty-documents").createSignedUrl(panDocument.file_path, 60);
+    setOpeningPan(false);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+  }
 
   function startEdit(r: Record) {
     setEditingId(r.id);
@@ -94,17 +106,29 @@ export default function SalaryLedger({
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
-        <h2 className="mb-3 font-display text-base font-semibold text-navy-900">Bank Details</h2>
-        {bankDetails.bank_account_number ? (
-          <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            <BankRow label="Bank" value={bankDetails.bank_name} />
-            <BankRow label="Account Holder" value={bankDetails.bank_account_holder_name} />
-            <BankRow label="Account Number" value={bankDetails.bank_account_number} />
-            <BankRow label="IFSC Code" value={bankDetails.bank_ifsc_code} />
-            <BankRow label="Branch" value={bankDetails.bank_branch_name} />
-          </div>
+        <h2 className="mb-3 font-display text-base font-semibold text-navy-900">Bank &amp; PAN Details</h2>
+        {bankDetails.bank_account_number || panNo ? (
+          <>
+            <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+              <BankRow label="Bank" value={bankDetails.bank_name} />
+              <BankRow label="Account Holder" value={bankDetails.bank_account_holder_name} />
+              <BankRow label="Account Number" value={bankDetails.bank_account_number} />
+              <BankRow label="IFSC Code" value={bankDetails.bank_ifsc_code} />
+              <BankRow label="Branch" value={bankDetails.bank_branch_name} />
+              <BankRow label="PAN Number" value={panNo} />
+            </div>
+            {panDocument && (
+              <button
+                type="button"
+                onClick={handleViewPan}
+                className="mt-3 text-sm font-medium text-teal-600 hover:text-teal-700"
+              >
+                {openingPan ? "Opening..." : `Download PAN Card Copy (${panDocument.file_name})`}
+              </button>
+            )}
+          </>
         ) : (
-          <p className="text-sm text-muted">No bank details on file for this faculty member yet.</p>
+          <p className="text-sm text-muted">No bank or PAN details on file for this faculty member yet.</p>
         )}
       </div>
 
