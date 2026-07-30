@@ -7,15 +7,23 @@ import { createClient } from "@/lib/supabase/client";
 import { Field, TextInput, PrimaryButton, SecondaryButton } from "@/components/form-controls";
 
 type Record = { id: string; month: string; salary_amount: number | null; tds_amount: number | null };
+type BankDetails = {
+  bank_name: string | null;
+  bank_account_holder_name: string | null;
+  bank_account_number: string | null;
+  bank_ifsc_code: string | null;
+  bank_branch_name: string | null;
+};
 
 export default function SalaryLedger({
-  facultyId, facultyName, departmentName, designation, records,
+  facultyId, facultyName, departmentName, designation, records, bankDetails,
 }: {
   facultyId: string;
   facultyName: string;
   departmentName: string;
   designation: string;
   records: Record[];
+  bankDetails: BankDetails;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -86,6 +94,21 @@ export default function SalaryLedger({
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
+        <h2 className="mb-3 font-display text-base font-semibold text-navy-900">Bank Details</h2>
+        {bankDetails.bank_account_number ? (
+          <div className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <BankRow label="Bank" value={bankDetails.bank_name} />
+            <BankRow label="Account Holder" value={bankDetails.bank_account_holder_name} />
+            <BankRow label="Account Number" value={bankDetails.bank_account_number} />
+            <BankRow label="IFSC Code" value={bankDetails.bank_ifsc_code} />
+            <BankRow label="Branch" value={bankDetails.bank_branch_name} />
+          </div>
+        ) : (
+          <p className="text-sm text-muted">No bank details on file for this faculty member yet.</p>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
         <h2 className="mb-4 font-display text-base font-semibold text-navy-900">
           {editingId ? "Edit month" : "Add / Update month"}
         </h2>
@@ -140,6 +163,15 @@ export default function SalaryLedger({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function BankRow({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex justify-between gap-4 border-b border-slate-100 py-1.5 sm:justify-start sm:gap-3">
+      <span className="text-muted">{label}:</span>
+      <span className="font-medium text-ink">{value || "—"}</span>
     </div>
   );
 }

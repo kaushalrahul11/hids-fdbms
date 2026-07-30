@@ -5,7 +5,10 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { TextInput, PrimaryButton } from "@/components/form-controls";
 
-type Faculty = { id: string; full_name: string; department_name: string; present_designation: string };
+type Faculty = {
+  id: string; full_name: string; department_name: string; present_designation: string;
+  bank_account_number: string | null; bank_ifsc_code: string | null;
+};
 type SalaryRecord = { faculty_id: string; month: string; salary_amount: number | null; tds_amount: number | null };
 
 function currentMonth() {
@@ -121,6 +124,7 @@ export default function BulkSalaryEntry({ faculty, records }: { faculty: Faculty
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Department</th>
               <th className="px-4 py-3">Designation</th>
+              <th className="px-4 py-3">Bank A/C</th>
               <th className="px-4 py-3 w-36">Salary</th>
               <th className="px-4 py-3 w-36">TDS</th>
               <th className="px-4 py-3 w-20"></th>
@@ -133,6 +137,16 @@ export default function BulkSalaryEntry({ faculty, records }: { faculty: Faculty
                 <td className="px-4 py-2 font-medium text-ink">{f.full_name}</td>
                 <td className="px-4 py-2 text-muted">{f.department_name}</td>
                 <td className="px-4 py-2 text-muted">{f.present_designation}</td>
+                <td className="px-4 py-2 text-xs text-muted">
+                  {f.bank_account_number ? (
+                    <>
+                      <div>••••{f.bank_account_number.slice(-4)}</div>
+                      <div>{f.bank_ifsc_code ?? ""}</div>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-2 py-1.5">
                   <TextInput
                     value={getValue(f.id, "salary")}
@@ -161,7 +175,7 @@ export default function BulkSalaryEntry({ faculty, records }: { faculty: Faculty
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted">No faculty match.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-muted">No faculty match.</td></tr>
             )}
           </tbody>
         </table>
