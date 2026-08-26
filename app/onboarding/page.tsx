@@ -48,6 +48,8 @@ export default function OnboardingPage() {
   const [councils, setCouncils] = useState<Lookup[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
@@ -74,14 +76,58 @@ export default function OnboardingPage() {
       const { data: userData } = await supabase.auth.getUser();
       if (userData.user) {
         setUserId(userData.user.id);
-        setForm((f) => ({ ...f, email: userData.user!.email ?? "" }));
-        // Ensure a faculty_profile row exists early so the Documents step
-        // (which references faculty_id via a foreign key) doesn't fail
-        // before the final submit creates the full record.
-        await supabase.from("faculty_profile").upsert(
-          { id: userData.user.id, email: userData.user.email ?? "", full_name: "" },
-          { onConflict: "id", ignoreDuplicates: true }
-        );
+
+        // Load any previously-saved draft so faculty can resume where they
+        // left off instead of starting over.
+        const { data: existingProfile } = await supabase
+          .from("faculty_profile")
+          .select("*")
+          .eq("id", userData.user.id)
+          .maybeSingle();
+
+        if (existingProfile) {
+          setForm((f) => {
+            const merged = { ...f };
+            (Object.keys(f) as (keyof typeof f)[]).forEach((key) => {
+              const value = (existingProfile as any)[key];
+              if (value !== undefined && value !== null) merged[key] = String(value);
+            });
+            merged.email = userData.user!.email ?? merged.email;
+            return merged;
+          });
+          if (Array.isArray(existingProfile.additional_registrations) && existingProfile.additional_registrations.length > 0) {
+            setRegRows(existingProfile.additional_registrations);
+          }
+          setStep(existingProfile.onboarding_step ?? 0);
+        } else {
+          // First time here — create a minimal row so the Documents step
+          // (which references faculty_id via a foreign key) doesn't fail
+          // before a draft has been saved.
+          await supabase.from("faculty_profile").upsert(
+            { id: userData.user.id, email: userData.user.email ?? "", full_name: "" },
+            { onConflict: "id" }
+          );
+          setForm((f) => ({ ...f, email: userData.user!.email ?? "" }));
+        }
+
+        const [{ data: qualData }, { data: histData }] = await Promise.all([
+          supabase.from("faculty_qualifications").select("*").eq("faculty_id", userData.user.id).order("sort_order"),
+          supabase.from("faculty_employment_history").select("*").eq("faculty_id", userData.user.id).order("sort_order"),
+        ]);
+        if (qualData && qualData.length > 0) {
+          setQualifications(qualData.map((q) => ({
+            id: q.id, degree_type: q.degree_type ?? "", degree_name: q.degree_name ?? "",
+            college_name: q.college_name ?? "", university_name: q.university_name ?? "",
+            year_month_passing: q.year_month_passing ?? "", speciality: q.speciality ?? "",
+          })));
+        }
+        if (histData && histData.length > 0) {
+          setHistory(histData.map((h) => ({
+            id: h.id, position: h.position, institution_name: h.institution_name,
+            from_date: h.from_date ?? "", to_date: h.to_date ?? "",
+          })));
+        }
+        setDraftLoaded(true);
       }
       const [dept, col, uni, spec, coun] = await Promise.all([
         supabase.from("departments").select("id, name").eq("is_active", true).order("name"),
@@ -98,6 +144,52 @@ export default function OnboardingPage() {
     }
     load();
   }, [supabase]);
+
+  async function saveDraft(nextStep: number) {
+    if (!userId) return false;
+
+    const payload: Record<string, any> = {
+      id: userId,
+      ...form,
+      department_id: form.department_id ? Number(form.department_id) : null,
+      date_of_birth: form.date_of_birth || null,
+      doj_hids: form.doj_hids || null,
+      present_appt_order_date: form.present_appt_order_date || null,
+      last_college_relieving_date: form.last_college_relieving_date || null,
+      previous_appt_order_date: form.previous_appt_order_date || null,
+      previous_relieving_order_date: form.previous_relieving_order_date || null,
+      sdc_valid_upto: form.sdc_valid_upto || null,
+      additional_registrations: regRows.filter((r) => r.label && r.value),
+      onboarding_step: nextStep,
+    };
+
+    const { error: profileError } = await supabase.from("faculty_profile").upsert(payload);
+    if (profileError) {
+      setError(`Couldn't save your progress: ${profileError.message}`);
+      return false;
+    }
+
+    const validQuals = qualifications.filter((q) => q.degree_type && q.college_name && q.university_name);
+    await supabase.from("faculty_qualifications").delete().eq("faculty_id", userId);
+    if (validQuals.length > 0) {
+      await supabase.from("faculty_qualifications").insert(
+        validQuals.map((q, idx) => ({ faculty_id: userId, ...q, sort_order: idx }))
+      );
+    }
+
+    const validHistory = history.filter((r) => r.position && r.institution_name && r.from_date);
+    await supabase.from("faculty_employment_history").delete().eq("faculty_id", userId);
+    if (validHistory.length > 0) {
+      await supabase.from("faculty_employment_history").insert(
+        validHistory.map((row, idx) => ({
+          faculty_id: userId, position: row.position, institution_name: row.institution_name,
+          from_date: row.from_date, to_date: row.to_date || null, sort_order: idx,
+        }))
+      );
+    }
+
+    return true;
+  }
 
   function update(field: keyof typeof form, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -133,7 +225,7 @@ export default function OnboardingPage() {
     setRegRows((rows) => rows.filter((_, i) => i !== index));
   }
 
-  function goNext() {
+  async function goNext() {
     setError(null);
     if (sameAsPresent && step === 1) {
       setForm((f) => ({
@@ -145,7 +237,11 @@ export default function OnboardingPage() {
         permanent_pincode: f.present_pincode,
       }));
     }
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    const next = Math.min(step + 1, STEPS.length - 1);
+    setSavingDraft(true);
+    await saveDraft(next);
+    setSavingDraft(false);
+    setStep(next);
   }
   function goBack() {
     setError(null);
@@ -157,65 +253,35 @@ export default function OnboardingPage() {
     setSubmitting(true);
     setError(null);
 
-    const validHistory = history.filter((r) => r.position && r.institution_name && r.from_date);
-    const validQualifications = qualifications.filter((q) => q.degree_type && q.college_name && q.university_name);
-
-    const profilePayload = {
-      id: userId,
-      ...form,
-      department_id: form.department_id ? Number(form.department_id) : null,
-      date_of_birth: form.date_of_birth || null,
-      doj_hids: form.doj_hids || null,
-      present_appt_order_date: form.present_appt_order_date || null,
-      last_college_relieving_date: form.last_college_relieving_date || null,
-      previous_appt_order_date: form.previous_appt_order_date || null,
-      previous_relieving_order_date: form.previous_relieving_order_date || null,
-      sdc_valid_upto: form.sdc_valid_upto || null,
-      additional_registrations: regRows.filter((r) => r.label && r.value),
-    };
-
-    const { error: profileError } = await supabase.from("faculty_profile").upsert(profilePayload);
-    if (profileError) {
-      setError(`Couldn't save your profile: ${profileError.message}`);
+    const ok = await saveDraft(STEPS.length - 1);
+    if (!ok) {
       setSubmitting(false);
       return;
-    }
-
-    if (validQualifications.length > 0) {
-      const payload = validQualifications.map((q, idx) => ({ faculty_id: userId, ...q, sort_order: idx }));
-      const { error: qualError } = await supabase.from("faculty_qualifications").insert(payload);
-      if (qualError) {
-        setError(`Profile saved, but qualifications failed: ${qualError.message}`);
-        setSubmitting(false);
-        return;
-      }
-    }
-
-    if (validHistory.length > 0) {
-      const historyPayload = validHistory.map((row, idx) => ({
-        faculty_id: userId, position: row.position, institution_name: row.institution_name,
-        from_date: row.from_date, to_date: row.to_date || null, sort_order: idx,
-      }));
-      const { error: historyError } = await supabase.from("faculty_employment_history").insert(historyPayload);
-      if (historyError) {
-        setError(`Profile saved, but employment history failed: ${historyError.message}`);
-        setSubmitting(false);
-        return;
-      }
     }
 
     // Seed the initial "open" HIDS designation row (to_date = null means
     // still ongoing) so total experience can be calculated purely from
     // this table going forward — no separate current-segment calculation.
+    // Only insert if it doesn't already exist (e.g. from a previous draft save).
     if (form.doj_hids && form.present_designation) {
-      const { error: openRowError } = await supabase.from("faculty_employment_history").insert({
-        faculty_id: userId, position: form.present_designation, institution_name: "Himachal Institute of Dental Sciences",
-        from_date: form.doj_hids, to_date: null, source: "promotion", sort_order: validHistory.length,
-      });
-      if (openRowError) {
-        setError(`Profile saved, but couldn't record your current appointment: ${openRowError.message}`);
-        setSubmitting(false);
-        return;
+      const { data: existingOpenRow } = await supabase
+        .from("faculty_employment_history")
+        .select("id")
+        .eq("faculty_id", userId)
+        .eq("institution_name", "Himachal Institute of Dental Sciences")
+        .is("to_date", null)
+        .maybeSingle();
+
+      if (!existingOpenRow) {
+        const { error: openRowError } = await supabase.from("faculty_employment_history").insert({
+          faculty_id: userId, position: form.present_designation, institution_name: "Himachal Institute of Dental Sciences",
+          from_date: form.doj_hids, to_date: null, source: "promotion",
+        });
+        if (openRowError) {
+          setError(`Profile saved, but couldn't record your current appointment: ${openRowError.message}`);
+          setSubmitting(false);
+          return;
+        }
       }
     }
 
@@ -249,6 +315,14 @@ export default function OnboardingPage() {
           </form>
         </div>
       </header>
+
+      {draftLoaded && step > 0 && !submitted && (
+        <div className="mx-auto max-w-3xl px-4 pt-4 sm:px-6">
+          <p className="rounded-md bg-teal-100 px-3 py-2 text-sm text-navy-900">
+            Picking up where you left off — your progress is saved automatically as you go.
+          </p>
+        </div>
+      )}
 
       {submitted ? (
         <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
@@ -321,7 +395,7 @@ export default function OnboardingPage() {
           <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-6">
             <SecondaryButton type="button" onClick={goBack} disabled={step === 0}>Back</SecondaryButton>
             {step < STEPS.length - 1 ? (
-              <PrimaryButton type="button" onClick={goNext}>Continue</PrimaryButton>
+              <PrimaryButton type="button" onClick={goNext} loading={savingDraft}>Continue</PrimaryButton>
             ) : (
               <PrimaryButton type="button" onClick={handleFinalSubmit} loading={submitting}>Submit profile</PrimaryButton>
             )}
