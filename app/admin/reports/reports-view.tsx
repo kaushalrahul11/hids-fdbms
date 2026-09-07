@@ -96,6 +96,7 @@ export default function ReportsView({ rows }: { rows: Row[] }) {
   const expiringSoon = useMemo(
     () =>
       rows
+        .filter((r) => r.status !== "resigned" && r.status !== "relieved")
         .filter((r) => r.sdc_valid_upto && daysUntil(r.sdc_valid_upto) <= 90)
         .sort((a, b) => new Date(a.sdc_valid_upto!).getTime() - new Date(b.sdc_valid_upto!).getTime()),
     [rows]

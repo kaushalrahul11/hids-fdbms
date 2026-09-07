@@ -24,7 +24,7 @@ export default async function AccountsLayout({ children }: { children: React.Rea
           <div className="flex items-center gap-3">
             <Link href="/accounts" className="text-sm font-medium text-slate-300 hover:text-white">Salary / TDS Entry</Link>
             <form action="/auth/signout" method="post">
-              <SecondaryButton type="submit" className="bg-transparent border-slate-600 text-white hover:bg-navy-800">
+              <SecondaryButton type="submit" className="!bg-transparent !border-slate-500 !text-white hover:!bg-navy-800">
                 Sign out
               </SecondaryButton>
             </form>

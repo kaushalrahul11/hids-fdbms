@@ -43,7 +43,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </nav>
           </div>
           <form action="/auth/signout" method="post">
-            <SecondaryButton type="submit" className="bg-transparent border-slate-600 text-white hover:bg-navy-800">
+            <SecondaryButton type="submit" className="!bg-transparent !border-slate-500 !text-white hover:!bg-navy-800">
               Sign out
             </SecondaryButton>
           </form>
