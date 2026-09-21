@@ -14,9 +14,14 @@ export default async function DashboardPage() {
     .select("id", { count: "exact", head: true })
     .eq("faculty_id", user.id);
 
+  const { count: lectureCount } = await supabase
+    .from("lecture_logs")
+    .select("id", { count: "exact", head: true })
+    .eq("faculty_id", user.id);
+
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Link href="/dashboard/profile" className="rounded-lg border border-slate-200 bg-white p-6 transition-colors hover:border-teal-400">
           <p className="font-display text-lg font-semibold text-navy-900">My Profile</p>
           <p className="mt-1 text-sm text-muted">View your full record, including auto-calculated experience.</p>
@@ -28,6 +33,10 @@ export default async function DashboardPage() {
         <Link href="/dashboard/documents" className="rounded-lg border border-slate-200 bg-white p-6 transition-colors hover:border-teal-400">
           <p className="font-display text-lg font-semibold text-navy-900">My Documents</p>
           <p className="mt-1 text-sm text-muted">Upload ID proofs, degrees, and appointment letters.</p>
+        </Link>
+        <Link href="/dashboard/lectures" className="rounded-lg border border-slate-200 bg-white p-6 transition-colors hover:border-teal-400">
+          <p className="font-display text-lg font-semibold text-navy-900">Lecture Log</p>
+          <p className="mt-1 text-sm text-muted">{lectureCount ?? 0} logged — record date, topic, and year.</p>
         </Link>
       </div>
       <p className="rounded-md bg-teal-100 px-4 py-3 text-sm text-navy-900">

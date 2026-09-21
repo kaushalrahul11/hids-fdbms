@@ -33,6 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               <NavLink href="/dashboard/profile">My Profile</NavLink>
               <NavLink href="/dashboard/publications">My Publications</NavLink>
               <NavLink href="/dashboard/documents">My Documents</NavLink>
+              <NavLink href="/dashboard/lectures">Lecture Log</NavLink>
             </nav>
           </div>
           <form action="/auth/signout" method="post">
