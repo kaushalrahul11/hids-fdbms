@@ -112,3 +112,5 @@ export const FIELD_LABELS: Record<string, string> = {
 };
 
 export const OTHER = "Other (specify)";
+
+export const LECTURE_YEARS = ["BDS 1st Year", "BDS 2nd Year", "BDS 3rd Year", "BDS Final Year"] as const;
