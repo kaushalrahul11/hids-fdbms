@@ -40,6 +40,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <NavLink href="/admin/accounts-users/new">Add Accounts User</NavLink>
               <NavLink href="/admin/edit-requests" badge={pendingEditCount || undefined}>Edit Requests</NavLink>
               <NavLink href="/admin/reports">Reports</NavLink>
+              <NavLink href="/admin/lecture-reports">Lecture Reports</NavLink>
             </nav>
           </div>
           <form action="/auth/signout" method="post">
