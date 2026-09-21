@@ -63,18 +63,14 @@ export default function LectureLogManager({
     router.refresh();
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this lecture entry?")) return;
-    await supabase.from("lecture_logs").delete().eq("id", id);
-    setLogs((l) => l.filter((log) => log.id !== id));
-    router.refresh();
-  }
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold text-navy-900">Lecture Log</h1>
-        <p className="mt-1 text-sm text-muted">Record each lecture you take — date, topic, and year.</p>
+        <p className="mt-1 text-sm text-muted">
+          Record each lecture you take — date, topic, and year. Once added, entries can only be
+          corrected by admin.
+        </p>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white p-5 sm:p-6">
@@ -116,7 +112,6 @@ export default function LectureLogManager({
               <th className="px-4 py-3">Year</th>
               <th className="px-4 py-3">Topic</th>
               <th className="px-4 py-3">Remarks</th>
-              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -126,15 +121,10 @@ export default function LectureLogManager({
                 <td className="px-4 py-2 text-muted">{log.year}</td>
                 <td className="px-4 py-2 text-muted">{log.topic}</td>
                 <td className="px-4 py-2 text-muted">{log.remarks ?? "—"}</td>
-                <td className="px-4 py-2 text-right">
-                  <button onClick={() => handleDelete(log.id)} className="text-xs font-medium text-red-500 hover:text-red-600">
-                    Delete
-                  </button>
-                </td>
               </tr>
             ))}
             {logs.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted">No lectures logged yet.</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-muted">No lectures logged yet.</td></tr>
             )}
           </tbody>
         </table>
